@@ -647,7 +647,7 @@ async function shortlistListing(j, btn) {
 
 // ---------- Find view ----------
 const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", grade: "21" };
-const results = { jobs: [], shown: 0, run: 0 };
+const results = { jobs: [], allLevels: 0, shown: 0, run: 0 };
 
 function rolesFor() {
   const d = DEGREES[state.degree];
@@ -708,6 +708,7 @@ async function renderResults(animate = false) {
   }
   if (run !== results.run) return; // a newer search started while this one loaded
   results.jobs = filterJobs(pool, state);
+  results.allLevels = state.level === "any" ? results.jobs.length : filterJobs(pool, { ...state, level: "any" }).length;
   results.shown = 0;
   list.innerHTML = "";
   if (!results.jobs.length) {
@@ -732,6 +733,7 @@ function showMore(animate = true) {
 async function renderCount() {
   const n = results.jobs.length;
   let text = `${n.toLocaleString("en-GB")} job${n === 1 ? "" : "s"}`;
+  if (results.allLevels > n) text += ` · ${results.allLevels.toLocaleString("en-GB")} at any level`;
   try {
     const meta = await loadFile("jobs/meta.json");
     const c = meta.countries[state.country];

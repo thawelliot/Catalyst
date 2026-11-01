@@ -35,7 +35,10 @@ COUNTRIES = {"gb": "GBP", "de": "EUR", "nl": "EUR", "fr": "EUR", "es": "EUR"}
 # Each European country refreshes once a week on its own day (Mon=0), spreading Adzuna calls out
 EUROPE_DAY = {"de": 0, "nl": 1, "fr": 2, "es": 3}
 OPEN_PHRASES = {"any": ["any degree", "any discipline"], "stem": ["stem degree", "any stem"]}
-GRAD_TITLE = re.compile(r"\b(graduate|grad|junior|entry[- ]level|trainee|apprentice|assistant|placement|intern(ship)?|year in industry)\b", re.I)
+# A job counts as open to graduates unless its title asks for seniority
+SENIOR_TITLE = re.compile(r"\b(senior|snr|sr|lead|principal|head|director|manager|chief|partner|experienced|consultant|architect|specialist|expert|leiter|leitung)\b", re.I)
+REED_PAGES = 3  # up to 300 results per phrase
+REED_PAUSE = 0.25
 ADZUNA_PAUSE = 2.6  # seconds between calls: Adzuna allows about 25 a minute
 UA = "Catalyst/1.0 (graduate job listings)"
 
@@ -83,7 +86,15 @@ def money(value):
         return None
 
 
-def from_reed(r, graduate):
+GRAD_TITLE = re.compile(r"\b(graduate|grad|junior|jnr|entry[- ]level|trainee|apprentice|placement|intern(ship)?|assistant)\b", re.I)
+
+
+def entry_level(title):
+    """'Graduate Consultant' is entry level; 'Senior Chemist' and 'Lab Manager' are not."""
+    return bool(GRAD_TITLE.search(title or "")) or not SENIOR_TITLE.search(title or "")
+
+
+def from_reed(r):
     return {
         "id": f"reed-{r['jobId']}",
         "title": clean(r.get("jobTitle")),
@@ -97,7 +108,7 @@ def from_reed(r, graduate):
         "posted": reed_date(r.get("date")),
         "url": r.get("jobUrl") or f"https://www.reed.co.uk/jobs/{r['jobId']}",
         "sources": ["Reed"],
-        "grad": bool(graduate or GRAD_TITLE.search(r.get("jobTitle") or "")),
+        "grad": entry_level(r.get("jobTitle")),
     }
 
 
@@ -116,7 +127,7 @@ def from_adzuna(a, currency):
         "posted": (a.get("created") or "")[:10] or None,
         "url": a.get("redirect_url"),
         "sources": ["Adzuna"],
-        "grad": bool(GRAD_TITLE.search(a.get("title") or "")),
+        "grad": entry_level(a.get("title")),
     }
 
 
@@ -166,11 +177,19 @@ def get_json(url, headers=None, tries=3, body=None):
             return None
 
 
-def reed_search(key, keywords, graduate):
+def reed_search(key, keywords, **params):
+    """Reed returns 100 jobs per page; read up to REED_PAGES pages."""
     auth = base64.b64encode(f"{key}:".encode()).decode()
-    q = urllib.parse.urlencode({"keywords": keywords, "resultsToTake": 100, "graduate": str(graduate).lower()})
-    data = get_json(f"https://www.reed.co.uk/api/1.0/search?{q}", {"Authorization": f"Basic {auth}"})
-    return [from_reed(r, graduate) for r in (data or {}).get("results", [])]
+    jobs = []
+    for page in range(REED_PAGES):
+        q = urllib.parse.urlencode({"keywords": keywords, "resultsToTake": 100, "resultsToSkip": page * 100, **params})
+        data = get_json(f"https://www.reed.co.uk/api/1.0/search?{q}", {"Authorization": f"Basic {auth}"}) or {}
+        results = data.get("results", [])
+        jobs += [from_reed(r) for r in results]
+        time.sleep(REED_PAUSE)
+        if len(results) < 100 or len(jobs) >= data.get("totalResults", 0):
+            break
+    return jobs
 
 
 def adzuna_search(app_id, app_key, country, **params):
@@ -232,8 +251,7 @@ def collect_country(country, reed_key, adzuna):
         found = []
         if country == "gb" and reed_key:
             for phrase in phrases:
-                for graduate in (True, False):
-                    found += reed_search(reed_key, phrase, graduate)
+                found += reed_search(reed_key, phrase)
         if adzuna and country == "gb":
             for phrase in phrases[:2]:
                 found += adzuna_search(*adzuna, country, title_only=phrase)
@@ -248,7 +266,7 @@ def collect_country(country, reed_key, adzuna):
         found = []
         for phrase in phrases:
             if country == "gb" and reed_key:
-                found += reed_search(reed_key, f'"{phrase}"', True)
+                found += reed_search(reed_key, f'"{phrase}"', graduate="true")
             if adzuna:
                 found += adzuna_search(*adzuna, country, what_phrase=phrase)
         jobs = merge(place_postcodes(found))

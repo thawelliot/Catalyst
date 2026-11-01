@@ -1,4 +1,4 @@
-"""Tests for the job collector. Run: py -m unittest test_update_jobs"""
+﻿"""Tests for the job collector. Run: py -m unittest test_update_jobs"""
 import datetime as dt
 import re
 import unittest
@@ -24,7 +24,7 @@ def adzuna(job_id, title, company, location, salary=(None, None), predicted="0")
 
 class Parsing(unittest.TestCase):
     def test_reed_record(self):
-        j = uj.from_reed(reed(1, "Graduate Analytical Chemist", "Unilever UK Ltd", "Port Sunlight"), graduate=True)
+        j = uj.from_reed(reed(1, "Graduate Analytical Chemist", "Unilever UK Ltd", "Port Sunlight"))
         self.assertEqual(j["deadline"], "2026-11-30")
         self.assertEqual(j["posted"], "2026-10-25")
         self.assertEqual((j["salaryMin"], j["salaryMax"]), (28000, 32000))
@@ -39,14 +39,24 @@ class Parsing(unittest.TestCase):
     def test_title_match_is_whole_word(self):
         phrases = ["chemist", "chemistry"]
         self.assertTrue(uj.title_matches("Formulation Chemist (m/w/d)", phrases))
-        self.assertFalse(uj.title_matches("Chemical Plant Operator", phrases))
+        self.assertFalse(uj.title_matches("Chemicals Sales Executive", phrases))
         self.assertFalse(uj.title_matches("Graduate Finance Scheme - open to all STEM", phrases))
         self.assertFalse(uj.title_matches("Sales Manager - Transport", ["sport"]))
 
 
+class Level(unittest.TestCase):
+    def test_plain_titles_count_as_entry_level(self):
+        for title in ["Analytical Chemist", "QC Analyst", "Graduate Consultant", "Junior Project Manager", "Laboratory Technician"]:
+            self.assertTrue(uj.entry_level(title), title)
+
+    def test_senior_titles_do_not(self):
+        for title in ["Senior Chemist", "Lead Developer", "Laboratory Manager", "Principal Scientist", "Head of R&D"]:
+            self.assertFalse(uj.entry_level(title), title)
+
+
 class Merging(unittest.TestCase):
     def test_same_job_on_two_sites_becomes_one(self):
-        jobs = [uj.from_reed(reed(1, "Analytical Chemist", "Unilever UK Ltd", "Manchester"), False),
+        jobs = [uj.from_reed(reed(1, "Analytical Chemist", "Unilever UK Ltd", "Manchester")),
                 uj.from_adzuna(adzuna("a1", "Analytical Chemist", "UNILEVER", "Manchester, Greater Manchester"), "GBP")]
         out = uj.merge(jobs, TODAY)
         self.assertEqual(len(out), 1)
@@ -55,25 +65,25 @@ class Merging(unittest.TestCase):
 
     def test_estimated_salary_replaced_by_real_one(self):
         jobs = [uj.from_adzuna(adzuna("a1", "Process Chemist", "Croda", "Goole", (30000, 30000), "1"), "GBP"),
-                uj.from_reed(reed(2, "Process Chemist", "Croda", "Goole", salary=(27000, 29000)), False)]
+                uj.from_reed(reed(2, "Process Chemist", "Croda", "Goole", salary=(27000, 29000)))]
         out = uj.merge(jobs, TODAY)
         self.assertEqual((out[0]["salaryMin"], out[0]["salaryEstimated"]), (27000, False))
 
     def test_expired_and_broken_jobs_dropped(self):
-        jobs = [uj.from_reed(reed(1, "Chemist", "A", "Leeds", deadline="31/10/2026"), False),
-                uj.from_reed(reed(2, "Chemist", "B", "Leeds"), False)]
+        jobs = [uj.from_reed(reed(1, "Chemist", "A", "Leeds", deadline="31/10/2026")),
+                uj.from_reed(reed(2, "Chemist", "B", "Leeds"))]
         jobs.append(dict(jobs[1], id="x", url=None, company="C"))
         out = uj.merge(jobs, TODAY)
         self.assertEqual([j["company"] for j in out], ["B"])
 
     def test_different_locations_stay_separate(self):
-        jobs = [uj.from_reed(reed(1, "Chemist", "Croda", "Goole"), False),
-                uj.from_reed(reed(2, "Chemist", "Croda", "Leek"), False)]
+        jobs = [uj.from_reed(reed(1, "Chemist", "Croda", "Goole")),
+                uj.from_reed(reed(2, "Chemist", "Croda", "Leek"))]
         self.assertEqual(len(uj.merge(jobs, TODAY)), 2)
 
     def test_sorted_by_deadline_then_newest(self):
-        a = uj.from_reed(reed(1, "Chemist", "A", "X", deadline="20/11/2026"), False)
-        b = uj.from_reed(reed(2, "Chemist", "B", "X", deadline="05/11/2026"), False)
+        a = uj.from_reed(reed(1, "Chemist", "A", "X", deadline="20/11/2026"))
+        b = uj.from_reed(reed(2, "Chemist", "B", "X", deadline="05/11/2026"))
         c = uj.from_adzuna(adzuna("c", "Chemist", "C", "X"), "GBP")
         self.assertEqual([j["company"] for j in uj.merge([a, b, c], TODAY)], ["B", "A", "C"])
 
