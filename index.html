@@ -553,7 +553,10 @@ function salaryText(j) {
   const f = new Intl.NumberFormat(COUNTRIES[state.country].locale, { style: "currency", currency: j.currency || "GBP", maximumFractionDigits: 0 });
   const lo = j.salaryMin, hi = j.salaryMax;
   if (!lo && !hi) return "";
-  const text = lo && hi && lo !== hi ? `${f.format(lo)} – ${f.format(hi)}` : lo && hi ? f.format(lo) : lo ? `From ${f.format(lo)}` : `Up to ${f.format(hi)}`;
+  const range = lo && hi && lo !== hi ? `${f.format(lo)} – ${f.format(hi)}` : lo && hi ? f.format(lo) : lo ? `From ${f.format(lo)}` : `Up to ${f.format(hi)}`;
+  // The APIs give no pay period; amounts this small can only be hourly, daily or monthly pay
+  const top = hi || lo;
+  const text = range + (top < 100 ? " an hour" : top < 1000 ? " a day" : top < 10000 ? " a month" : "");
   return j.salaryEstimated ? `${text} (estimated)` : text;
 }
 

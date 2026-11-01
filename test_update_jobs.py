@@ -78,6 +78,20 @@ class Merging(unittest.TestCase):
         self.assertEqual([j["company"] for j in uj.merge([a, b, c], TODAY)], ["B", "A", "C"])
 
 
+class Postcodes(unittest.TestCase):
+    def test_spots_postcodes_only(self):
+        self.assertEqual(uj.postcode_of("PE129YD"), "PE12 9YD")
+        self.assertEqual(uj.postcode_of(" ts17 7bw "), "TS17 7BW")
+        self.assertEqual(uj.postcode_of("EC1A 1BB"), "EC1A 1BB")
+        self.assertIsNone(uj.postcode_of("Manchester"))
+        self.assertIsNone(uj.postcode_of("10115 Berlin"))
+
+    def test_replaces_with_town_or_tidies(self):
+        jobs = [{"location": "PE129YD"}, {"location": "ZZ99 9ZZ"}, {"location": "Leeds"}]
+        uj.place_postcodes(jobs, lookup=lambda codes: {"PE12 9YD": "South Holland"})
+        self.assertEqual([j["location"] for j in jobs], ["South Holland", "ZZ99 9ZZ", "Leeds"])
+
+
 class Config(unittest.TestCase):
     def test_degrees_match_the_site(self):
         page = (Path(__file__).resolve().parent / "job-finder.html").read_text(encoding="utf-8")

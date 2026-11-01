@@ -143,9 +143,12 @@ def merge(jobs, today=None):
 
 
 # ---------- Fetching ----------
-def get_json(url, headers=None, tries=3):
+def get_json(url, headers=None, tries=3, body=None):
+    """GET, or POST when a JSON body is given; retries busy or failing servers."""
     for attempt in range(tries):
-        req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+        data = json.dumps(body).encode() if body is not None else None
+        extra = {"Content-Type": "application/json"} if data else {}
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **extra, **(headers or {})})
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
@@ -177,6 +180,41 @@ def adzuna_search(app_id, app_key, country, **params):
     return [from_adzuna(a, COUNTRIES[country]) for a in (data or {}).get("results", [])]
 
 
+# ---------- UK postcodes ----------
+# Some Reed jobs give only a postcode ("PE129YD") as the location. Swap it for the town.
+POSTCODE = re.compile(r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\s*$", re.I)
+_towns = {}
+
+
+def postcode_of(location):
+    m = POSTCODE.match(location or "")
+    return f"{m[1]} {m[2]}".upper() if m else None
+
+
+def lookup_postcodes(codes):
+    """Map full UK postcodes to their town or district via postcodes.io (free, no key)."""
+    todo = sorted(set(codes) - set(_towns))
+    for i in range(0, len(todo), 100):
+        data = get_json("https://api.postcodes.io/postcodes", body={"postcodes": todo[i:i + 100]})
+        for item in (data or {}).get("result") or []:
+            r = item.get("result") or {}
+            _towns[item["query"].upper()] = r.get("admin_district") or r.get("parish") or r.get("region")
+    return {c: _towns.get(c) for c in codes}
+
+
+def place_postcodes(jobs, lookup=lookup_postcodes):
+    """Replace postcode-only locations with town names, or a tidied postcode if unknown."""
+    codes = {postcode_of(j["location"]) for j in jobs} - {None}
+    if not codes:
+        return jobs
+    towns = lookup(codes)
+    for j in jobs:
+        pc = postcode_of(j["location"])
+        if pc:
+            j["location"] = towns.get(pc) or pc
+    return jobs
+
+
 # ---------- Building ----------
 def slug(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
@@ -202,7 +240,7 @@ def collect_country(country, reed_key, adzuna):
         elif adzuna:
             # one broad call per degree elsewhere keeps inside the free limits
             found += adzuna_search(*adzuna, country, what_or=" ".join(sorted({w for p in phrases for w in p.split()})))
-        jobs = merge([j for j in found if title_matches(j["title"], phrases)])
+        jobs = merge(place_postcodes([j for j in found if title_matches(j["title"], phrases)]))
         write(OUT / country / f"{slug(degree)}.json", {"degree": degree, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
         print(f"  {country} {degree}: {len(jobs)}")
@@ -213,7 +251,7 @@ def collect_country(country, reed_key, adzuna):
                 found += reed_search(reed_key, f'"{phrase}"', True)
             if adzuna:
                 found += adzuna_search(*adzuna, country, what_phrase=phrase)
-        jobs = merge(found)
+        jobs = merge(place_postcodes(found))
         write(OUT / country / f"open-{pool}.json", {"pool": pool, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
         print(f"  {country} open-{pool}: {len(jobs)}")
