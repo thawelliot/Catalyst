@@ -1,0 +1,64 @@
+# Collects fresh job listings every morning, saves them in the repository,
+# and publishes the website/ folder to GitHub Pages.
+name: Update jobs and publish site
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 05:00 UTC daily
+  push:
+    branches: [main]
+    paths: ["website/index.html", "scripts/**"]
+  workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: "Refresh every country, not just the UK"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-and-publish
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test the collector
+        run: python -m unittest discover -s scripts
+
+      - name: Collect job listings
+        env:
+          REED_API_KEY: ${{ secrets.REED_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          FULL_REFRESH: ${{ inputs.full_refresh && '1' || '0' }}
+        run: python scripts/update_jobs.py
+
+      - name: Save listings to the repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add website/jobs
+          git diff --cached --quiet || git commit -m "Update job listings"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website
+      - id: deployment
+        uses: actions/deploy-pages@v4

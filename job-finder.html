@@ -1,0 +1,1034 @@
+<title>Catalyst</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: two views behind tabs. "Find jobs" = a brief panel (degree, mode, role, place) beside ready-made board searches. "My hub" = counts, then shortlist and applications side by side; everything stacks on phones. */
+/* Colour: a navy-to-sky gradient carries the brand (header band, primary actions); "In my subject" is deep blue, "Open to my degree" is sky blue. */
+:root {
+  --bg: #eef4fb;
+  --bg-top: #d6e6f8;
+  --surface: #ffffff;
+  --ink: #0d1b33;
+  --muted: #4f607c;
+  --line: #d2deef;
+  --accent: #1a4fb5;
+  --accent-ink: #ffffff;
+  --accent-soft: #dfeafb;
+  --chip: #e3ecf8;
+  --open: #0a74a8;
+  --open-soft: #d9eff9;
+  --grad-from: #0a1d4a;
+  --grad-to: #3d95e0;
+  --on-grad: #ffffff;
+  --on-grad-muted: #d4e6fa;
+  --warn: #a5560b;
+  --warn-soft: #fbecd9;
+  --bad: #b3261e;
+  --bad-soft: #f9e1df;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #07111f; --bg-top: #0c2142; --surface: #0f1d33; --ink: #e2ebf8; --muted: #93a7c6; --line: #1e3354;
+    --accent: #7db6ff; --accent-ink: #07111f; --accent-soft: #15294b; --chip: #172b49;
+    --open: #63d2f7; --open-soft: #0f3149; --grad-from: #0b1c45; --grad-to: #2f7ccc; --on-grad: #ffffff; --on-grad-muted: #c3d9f3;
+    --warn: #f0b36b; --warn-soft: #3b2c18; --bad: #f2a29b; --bad-soft: #3d1f1d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #07111f; --bg-top: #0c2142; --surface: #0f1d33; --ink: #e2ebf8; --muted: #93a7c6; --line: #1e3354;
+  --accent: #7db6ff; --accent-ink: #07111f; --accent-soft: #15294b; --chip: #172b49;
+  --open: #63d2f7; --open-soft: #0f3149; --grad-from: #0b1c45; --grad-to: #2f7ccc; --on-grad: #ffffff; --on-grad-muted: #c3d9f3;
+  --warn: #f0b36b; --warn-soft: #3b2c18; --bad: #f2a29b; --bad-soft: #3d1f1d;
+  color-scheme: dark;
+}
+:root { --grad: linear-gradient(120deg, var(--grad-from), var(--grad-to)); }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg) linear-gradient(180deg, var(--bg-top), var(--bg) 480px) no-repeat; color: var(--ink);
+  font: 16px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+header {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;
+  background: var(--grad); color: var(--on-grad); border-radius: 14px; padding: 26px 24px;
+  box-shadow: 0 10px 30px -14px rgb(10 29 74 / .55);
+}
+header h1 { font: 700 clamp(28px, 4vw, 40px)/1.1 var(--display); margin: 2px 0 0; letter-spacing: -0.01em; }
+header p { margin: 6px 0 0; color: var(--on-grad-muted); max-width: 62ch; }
+header .label { color: var(--on-grad-muted); }
+.label { font: 500 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+.tabs { display: flex; gap: 4px; background: rgb(255 255 255 / .14); padding: 4px; border-radius: 8px; }
+.tab { font: 600 15px/1 var(--body); border: 0; background: none; color: var(--on-grad-muted); padding: 9px 14px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.tab:hover { color: var(--on-grad); }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.tab:focus-visible { outline-color: var(--on-grad); }
+.count { font: 500 12px/1 var(--mono); background: var(--grad); color: var(--on-grad); border-radius: 999px; padding: 3px 7px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 12px 32px -22px rgb(10 29 74 / .45); }
+.search-grid {
+  display: grid; gap: 16px 14px; grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-areas:
+    "degree degree mode mode mode mode"
+    "roles roles roles roles roles roles"
+    "role role country country place place"
+    "level level grade grade go go";
+  align-items: end;
+}
+.f-degree { grid-area: degree; } .f-mode { grid-area: mode; } .f-roles { grid-area: roles; }
+.f-role { grid-area: role; } .f-country { grid-area: country; } .f-place { grid-area: place; }
+.f-level { grid-area: level; } .f-grade { grid-area: grade; } .f-go { grid-area: go; }
+.f-degree, .f-mode { align-self: start; }
+@media (max-width: 820px) {
+  .search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "degree degree" "mode mode" "roles roles" "role role" "country place" "level grade" "go go"; }
+}
+@media (max-width: 420px) {
+  .search-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "degree" "mode" "roles" "role" "country" "place" "level" "grade" "go"; }
+}
+.go { width: 100%; padding: 14px 18px; font-size: 17px; display: flex; justify-content: center; gap: 10px; }
+.go span { transition: transform .25s; }
+.go:hover span { transform: translateX(4px); }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label, .field .flabel { font-weight: 600; font-size: 15px; }
+input, select, textarea {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; width: 100%;
+}
+textarea { resize: vertical; min-height: 64px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { font-size: 14px; color: var(--muted); margin: 0; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .row2 { grid-template-columns: 1fr; } }
+
+.mode { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mode button { font: inherit; font-size: 14px; line-height: 1.25; text-align: left; border: 0; background: var(--bg); color: var(--ink); padding: 10px 12px; cursor: pointer; }
+.mode button + button { border-left: 1px solid var(--line); }
+.mode button strong { display: block; font-size: 15px; }
+.mode button small { color: var(--muted); }
+.mode button[aria-pressed="true"][data-mode="relevant"] { background: var(--accent-soft); box-shadow: inset 0 -3px 0 var(--accent); }
+.mode button[aria-pressed="true"][data-mode="open"] { background: var(--open-soft); box-shadow: inset 0 -3px 0 var(--open); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 14px; border: 1px solid transparent; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--grad); color: var(--on-grad); }
+.chip.key { font-weight: 600; }
+
+.btn { font: 600 15px/1 var(--body); border-radius: 6px; padding: 10px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.btn.primary { background: var(--grad); color: var(--on-grad); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { font-size: 14px; padding: 7px 10px; }
+.btn.danger { color: var(--bad); }
+.btn.danger.armed { background: var(--bad); color: var(--surface); border-color: var(--bad); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.results { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.results h2 { font: 700 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+.results h2 em { font-style: normal; color: var(--accent); }
+.results h2 em.open { color: var(--open); }
+.tip { background: var(--accent-soft); border-radius: 8px; padding: 12px 14px; font-size: 15px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.tip.open { background: var(--open-soft); }
+
+.found { scroll-margin-top: 20px; }
+.res-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.listings { display: flex; flex-direction: column; gap: 12px; }
+.listing {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 16px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+  position: relative; transition: border-color .2s, box-shadow .25s, transform .25s;
+}
+.listing::before { content: ""; position: absolute; inset: 14px auto 14px 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--grad); transform: scaleY(0); transition: transform .25s; }
+.listing:hover { border-color: var(--accent); box-shadow: 0 14px 30px -20px rgb(10 29 74 / .5); transform: translateY(-2px); }
+.listing:hover::before { transform: scaleY(1); }
+.logo {
+  width: 56px; height: 56px; border-radius: 12px; display: grid; place-items: center;
+  font: 700 19px/1 var(--display); color: #fff; letter-spacing: .02em;
+  background: linear-gradient(135deg, hsl(var(--hue) 62% 34%), hsl(calc(var(--hue) + 35) 70% 52%));
+}
+.l-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.l-main h3 { margin: 0; font: 700 18px/1.25 var(--display); overflow-wrap: anywhere; }
+.l-main h3 a { color: var(--ink); text-decoration: none; }
+.l-main h3 a:hover { color: var(--accent); }
+.l-co { margin: 0; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; }
+.fact { display: inline-flex; gap: 6px; align-items: center; }
+.fact svg { width: 15px; height: 15px; fill: var(--accent); color: var(--accent); flex: none; }
+.fact.dim { color: var(--muted); }
+.pill.src { background: none; border: 1px solid var(--line); color: var(--muted); }
+.l-act { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.l-act .btn { text-align: center; text-decoration: none; white-space: nowrap; }
+.keep.kept { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); opacity: 1; cursor: default; }
+@media (max-width: 640px) {
+  .listing { grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .logo { width: 44px; height: 44px; font-size: 16px; border-radius: 10px; }
+  .l-act { grid-column: 1 / -1; flex-direction: row; }
+  .l-act .btn { flex: 1; }
+}
+.more { align-self: center; padding: 12px 22px; }
+#list-toast:empty { display: none; }
+.nojobs { margin: 0; padding: 22px; background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); }
+
+.addcta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px dashed var(--line); border-radius: 12px; padding: 16px 18px; }
+.addcta p { margin: 0; color: var(--muted); }
+
+.saved { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.saved ul { list-style: none; margin: 0; padding: 0; display: contents; }
+.saved li { display: flex; align-items: center; background: var(--chip); border-radius: 999px; padding-left: 4px; max-width: 100%; }
+.saved li button.load { min-width: 0; font: inherit; font-size: 14px; background: none; color: var(--ink); border: 0; padding: 5px 4px 5px 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved li .linkbtn { padding: 5px 10px 5px 4px; }
+.saved .toast { flex-basis: 100%; min-height: 0; }
+.saved .toast:empty { display: none; }
+.linkbtn { font: inherit; font-size: 14px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px 8px; }
+.linkbtn.strong { color: var(--accent); font-weight: 600; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+.toast { font-size: 14px; color: var(--accent); min-height: 1.5em; margin: 0; }
+
+/* Hub */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 600px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.stat b { display: block; font: 700 30px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.banner { background: var(--warn-soft); color: var(--ink); border-radius: 8px; padding: 10px 14px; margin: 0; font-size: 15px; }
+.hubbar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; }
+details.add { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+details.add summary { cursor: pointer; padding: 14px 18px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+details.add summary::-webkit-details-marker { display: none; }
+details.add summary::after { content: "+"; font: 700 20px/1 var(--display); color: var(--accent); }
+details.add[open] summary::after { content: "−"; }
+details.add form { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.fit { display: flex; flex-wrap: wrap; gap: 8px; }
+.fit label { display: flex; gap: 6px; align-items: center; font-weight: 400; font-size: 15px; background: var(--chip); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.fit input { width: auto; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.col h3 { font: 700 20px/1.2 var(--display); margin: 0; display: flex; gap: 8px; align-items: baseline; }
+.col h3 small { font: 500 13px/1 var(--mono); color: var(--muted); }
+.jobs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.job { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.job-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.job h4 { font: 700 17px/1.25 var(--display); margin: 0; overflow-wrap: anywhere; }
+.job .meta { color: var(--muted); font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+.job .notes { font-size: 14px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding-left: 10px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { font: 500 12px/1 var(--mono); border-radius: 999px; padding: 5px 8px; white-space: nowrap; background: var(--chip); color: var(--ink); }
+.pill.relevant { background: var(--accent-soft); color: var(--accent); }
+.pill.open { background: var(--open-soft); color: var(--open); }
+.pill.soon { background: var(--warn-soft); color: var(--warn); }
+.pill.late { background: var(--bad-soft); color: var(--bad); }
+.pill.st-interview { background: var(--warn-soft); color: var(--warn); }
+.pill.st-offer { background: var(--grad); color: var(--on-grad); }
+.pill.st-rejected { background: var(--bad-soft); color: var(--bad); }
+.job-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.job-actions select { width: auto; padding: 6px 8px; font-size: 14px; }
+.job-actions a { font-size: 14px; color: var(--accent); }
+/* Motion: the page rises in on load, views slide in on tab change, and content reveals as it scrolls into view. */
+.progress { position: fixed; inset: 0 0 auto; height: calc(3px + env(safe-area-inset-top, 0px)); background: var(--grad); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); z-index: 20; pointer-events: none; }
+/* Load motion starts mostly visible, so a paused or skipped animation never hides the page */
+@keyframes rise { from { opacity: .6; transform: translateY(16px); } }
+header { animation: rise .7s cubic-bezier(.2, .7, .2, 1); }
+.search { animation: rise .8s cubic-bezier(.2, .7, .2, 1); }
+.view.enter { animation: rise .45s cubic-bezier(.2, .7, .2, 1); }
+.rv { opacity: 0; transform: translateY(22px) scale(.985); transition: opacity .6s cubic-bezier(.2, .7, .2, 1) var(--d, 0ms), transform .6s cubic-bezier(.2, .7, .2, 1) var(--d, 0ms); }
+.rv.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .rv { opacity: 1; transform: none; }
+}
+</style>
+
+<div class="progress" id="progress" aria-hidden="true"></div>
+<div class="wrap">
+  <header>
+    <div>
+      <span class="label">UK &amp; Europe · graduate and early-career</span>
+      <h1>Catalyst</h1>
+      <p id="intro">Pick your degree, then choose between jobs in your subject and jobs that are open to your degree. Browse current openings pooled from UK and European job sites, and keep the ones you like in your hub.</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" id="tab-find" aria-controls="view-find" data-view="find">Find jobs</button>
+      <button class="tab" role="tab" id="tab-hub" aria-controls="view-hub" data-view="hub">My hub <span class="count" id="hub-count">0</span></button>
+    </div>
+  </header>
+
+  <!-- FIND -->
+  <section id="view-find" class="view" role="tabpanel" aria-labelledby="tab-find">
+    <form class="panel search" id="brief" autocomplete="off">
+      <div class="search-grid">
+        <div class="field f-degree">
+          <label for="degree">Your degree</label>
+          <select id="degree"></select>
+        </div>
+
+        <div class="field f-mode">
+          <span class="flabel" id="mode-label">What kind of jobs?</span>
+          <div class="mode" role="group" aria-labelledby="mode-label">
+            <button type="button" data-mode="relevant" id="mode-relevant"><strong>In my subject</strong><small>Jobs that use your degree directly</small></button>
+            <button type="button" data-mode="open" id="mode-open"><strong>Open to my degree</strong><small>Schemes that take any degree or discipline</small></button>
+          </div>
+        </div>
+
+        <div class="field f-roles">
+          <span class="label" id="roles-label">Suggested roles</span>
+          <div class="chips" id="roles" role="group" aria-labelledby="roles-label"></div>
+        </div>
+
+        <div class="field f-role">
+          <label for="role">Role</label>
+          <input id="role" placeholder="e.g. Analytical Chemist">
+        </div>
+        <div class="field f-country">
+          <label for="country">Country</label>
+          <select id="country"></select>
+        </div>
+        <div class="field f-place">
+          <label for="place">Town or city</label>
+          <input id="place" placeholder="Anywhere">
+        </div>
+
+        <div class="field f-level">
+          <label for="level">Level</label>
+          <select id="level">
+            <option value="grad">Graduate / entry level</option>
+            <option value="intern">Internship / placement</option>
+            <option value="any">Any level</option>
+          </select>
+        </div>
+        <div class="field f-grade">
+          <label for="grade">Expected grade</label>
+          <select id="grade">
+            <option value="first">First</option>
+            <option value="21" selected>2:1</option>
+            <option value="22">2:2</option>
+            <option value="third">Third / pass</option>
+            <option value="na">Not a UK degree</option>
+          </select>
+        </div>
+        <div class="f-go">
+          <button type="submit" class="btn primary go" id="go">Search jobs <span aria-hidden="true">→</span></button>
+        </div>
+      </div>
+
+      <div class="saved">
+        <span class="label">Saved searches</span>
+        <ul id="saved-list"></ul>
+        <p class="empty" id="saved-empty">None yet.</p>
+        <button type="button" class="linkbtn strong" id="save">Save this search</button>
+        <p class="toast" id="toast" aria-live="polite"></p>
+      </div>
+    </form>
+
+    <div class="results found" id="results" hidden>
+      <div class="res-head">
+        <h2 id="headline"></h2>
+        <span class="label" id="count" aria-live="polite"></span>
+      </div>
+      <div class="tip" id="tip"></div>
+      <p class="toast" id="list-toast" aria-live="polite"></p>
+      <div id="groups" class="listings"></div>
+      <button type="button" class="btn more" id="more" hidden></button>
+      <div class="addcta">
+        <p>Found a job somewhere else? Add it to your hub yourself.</p>
+        <button type="button" class="btn" id="cta-add">Add a job to my hub</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- HUB -->
+  <section id="view-hub" class="view" role="tabpanel" aria-labelledby="tab-hub" hidden>
+    <div class="results">
+      <p class="banner" id="store-note" hidden></p>
+
+      <div class="stats" id="stats"></div>
+
+      <details class="add" id="add-box">
+        <summary>Add a job</summary>
+        <form id="add-form" autocomplete="off">
+          <div class="row2">
+            <div class="field"><label for="j-title">Job title</label><input id="j-title" required placeholder="e.g. Graduate Analytical Chemist"></div>
+            <div class="field"><label for="j-company">Employer</label><input id="j-company" placeholder="e.g. AstraZeneca"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="j-location">Location</label><input id="j-location" placeholder="e.g. Macclesfield"></div>
+            <div class="field"><label for="j-deadline">Closing date</label><input id="j-deadline" type="date"></div>
+          </div>
+          <div class="field"><label for="j-url">Link to the advert</label><input id="j-url" type="text" inputmode="url" placeholder="Paste the job advert's web address"></div>
+          <div class="field">
+            <span class="flabel">How does it fit your degree?</span>
+            <div class="fit">
+              <label><input type="radio" name="j-fit" id="j-fit-relevant" value="relevant" checked> In my subject</label>
+              <label><input type="radio" name="j-fit" id="j-fit-open" value="open"> Open to my degree</label>
+            </div>
+          </div>
+          <div class="field">
+            <span class="flabel">Where is it up to?</span>
+            <div class="fit">
+              <label><input type="radio" name="j-status" id="j-st-short" value="shortlist" checked> Shortlist, not applied yet</label>
+              <label><input type="radio" name="j-status" id="j-st-applied" value="applied"> Already applied</label>
+            </div>
+          </div>
+          <div class="field"><label for="j-notes">Notes</label><textarea id="j-notes" placeholder="Requirements, contacts, what to mention in the cover letter"></textarea></div>
+          <div class="btns"><button type="submit" class="btn primary" id="j-save">Add to hub</button></div>
+          <p class="toast" id="add-toast" aria-live="polite"></p>
+        </form>
+      </details>
+
+      <div class="hubbar">
+        <div class="chips" id="hub-filter" role="group" aria-label="Show">
+          <button type="button" class="chip" data-filter="all">All jobs</button>
+          <button type="button" class="chip" data-filter="relevant">In my subject</button>
+          <button type="button" class="chip" data-filter="open">Open to my degree</button>
+        </div>
+      </div>
+
+      <div class="cols">
+        <div class="col">
+          <h3>Shortlist <small id="short-n"></small></h3>
+          <p class="hint">Jobs you want to apply for, soonest closing date first.</p>
+          <ul class="jobs" id="short-list"></ul>
+        </div>
+        <div class="col">
+          <h3>Applications <small id="app-n"></small></h3>
+          <p class="hint">Jobs you have applied for. Update the stage as you hear back.</p>
+          <ul class="jobs" id="app-list"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ---------- Data ----------
+// Job-title phrases for each degree live in scripts/degrees.json (used by the daily job collector)
+const DEGREES = {
+  "Computer Science": { family: "stem", roles: ["Software Engineer", "Data Analyst", "Cyber Security Analyst", "IT Support Analyst", "DevOps Engineer", "Machine Learning Engineer"] },
+  "Mathematics": { family: "stem", roles: ["Actuarial Analyst", "Statistician", "Quantitative Analyst", "Data Analyst", "Risk Analyst", "Maths Teacher"] },
+  "Economics": { family: "business", roles: ["Economist", "Economic Analyst", "Policy Analyst", "Financial Analyst", "Pricing Analyst"] },
+  "Accounting & Finance": { family: "business", roles: ["Trainee Accountant", "Audit Associate", "Tax Trainee", "Financial Analyst", "Credit Analyst"] },
+  "Business & Management": { family: "business", roles: ["Business Analyst", "Operations Analyst", "Project Coordinator", "Account Manager", "HR Assistant"] },
+  "Marketing": { family: "business", roles: ["Marketing Executive", "Digital Marketing Assistant", "Social Media Executive", "SEO Executive", "Brand Assistant"] },
+  "Law (LLB)": { family: "humanities", roles: ["Trainee Solicitor", "Paralegal", "Legal Assistant", "Compliance Analyst", "Contract Manager"] },
+  "Psychology": { family: "health", roles: ["Assistant Psychologist", "Psychological Wellbeing Practitioner", "Research Assistant", "UX Researcher", "Mental Health Support Worker"] },
+  "Nursing": { family: "health", roles: ["Staff Nurse", "Newly Qualified Nurse", "Community Nurse", "Mental Health Nurse"] },
+  "Biology / Biomedical Science": { family: "stem", roles: ["Biomedical Scientist", "Laboratory Technician", "Microbiologist", "Clinical Research Associate", "Research Assistant"] },
+  "Chemistry": { family: "stem", roles: ["Analytical Chemist", "Formulation Chemist", "Process Chemist", "Quality Control Chemist", "Laboratory Technician"] },
+  "Physics": { family: "stem", roles: ["Physicist", "Research Scientist", "Medical Physicist", "Physics Teacher", "Optical Engineer"] },
+  "Mechanical Engineering": { family: "stem", roles: ["Mechanical Engineer", "Design Engineer", "Manufacturing Engineer", "Project Engineer", "Maintenance Engineer"] },
+  "Electrical / Electronic Engineering": { family: "stem", roles: ["Electrical Engineer", "Electronics Engineer", "Embedded Software Engineer", "Test Engineer", "Controls Engineer"] },
+  "Civil Engineering": { family: "stem", roles: ["Civil Engineer", "Site Engineer", "Structural Engineer", "Highways Engineer", "Geotechnical Engineer"] },
+  "Architecture": { family: "creative", roles: ["Architectural Assistant", "Part 1 Architectural Assistant", "Urban Designer", "BIM Technician"] },
+  "English / Journalism": { family: "humanities", roles: ["Editorial Assistant", "Content Writer", "Copywriter", "Journalist", "Communications Assistant"] },
+  "History / Politics": { family: "humanities", roles: ["Policy Officer", "Researcher", "Parliamentary Assistant", "Archivist", "Public Affairs Assistant"] },
+  "Geography / Environmental Science": { family: "stem", roles: ["Environmental Consultant", "GIS Analyst", "Sustainability Analyst", "Ecologist", "Planning Assistant"] },
+  "Sport Science": { family: "health", roles: ["Sports Scientist", "Strength and Conditioning Coach", "Exercise Physiologist", "PE Teacher"] },
+  "Design / Art": { family: "creative", roles: ["Graphic Designer", "UX Designer", "Junior Designer", "Motion Designer", "Illustrator"] },
+  "Education": { family: "humanities", roles: ["Teaching Assistant", "Primary Teacher", "Secondary Teacher", "Learning Support Assistant", "Education Officer"] },
+  "Pharmacy": { family: "health", roles: ["Foundation Pharmacist", "Pharmacist", "Regulatory Affairs Associate", "Medical Information Associate"] },
+  "Languages": { family: "humanities", roles: ["Translator", "Localisation Specialist", "Multilingual Customer Success", "International Sales Executive"] }
+};
+
+// Roles that recruit from any degree in a family: the "Open to my degree" list
+const OPEN_ROLES = {
+  stem: ["Graduate Scheme", "Consultant", "Analyst", "Patent", "Technical Sales", "Teacher"],
+  business: ["Graduate Scheme", "Consultant", "Analyst", "Sales", "Recruitment"],
+  humanities: ["Graduate Scheme", "Consultant", "Recruitment", "Communications", "Teacher"],
+  health: ["Graduate Scheme", "Management", "Consultant", "Clinical Research", "Teacher"],
+  creative: ["Graduate Scheme", "Marketing", "Project Coordinator", "Account Executive", "Recruitment"]
+};
+
+// Keys match the folders the job collector writes (website/jobs/<country>/)
+const COUNTRIES = {
+  gb: { name: "United Kingdom", locale: "en-GB" },
+  de: { name: "Germany", locale: "de-DE" },
+  nl: { name: "Netherlands", locale: "nl-NL" },
+  fr: { name: "France", locale: "fr-FR" },
+  es: { name: "Spain", locale: "es-ES" }
+};
+
+const GRADE_TIPS = {
+  first: "With a First you clear the grade bar for almost every graduate scheme. Apply early, because many schemes close in the autumn of your final year.",
+  "21": "Many UK graduate schemes ask for a 2:1, so check the entry requirements before you shortlist.",
+  "22": "Plenty of employers accept a 2:2, including many in the NHS and the public sector. Look for adverts that say \"any degree classification\".",
+  third: "Focus on entry-level roles, apprenticeships and smaller firms. These often weigh skills and experience more heavily than your grade.",
+  na: "Outside the UK, employers ask for a degree level (Bachelor's or Master's) rather than a classification."
+};
+
+const SUBJECT_ALL = "Everything in my subject";
+const OPEN_ALL = "All open roles";
+const STATUSES = { applied: "Applied", interview: "Interview", offer: "Offer", rejected: "Unsuccessful" };
+
+const $ = id => document.getElementById(id);
+const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+// ---------- Motion ----------
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const pendingReveal = new Set();
+// Fade and lift elements in as they scroll into view, staggered within each batch
+function reveal(els) {
+  if (reduceMotion) return;
+  els.filter(Boolean).forEach((e, i) => {
+    e.classList.remove("in");
+    e.classList.add("rv");
+    e.style.setProperty("--d", Math.min(i, 10) * 55 + "ms");
+    pendingReveal.add(e);
+  });
+  setTimeout(checkReveal, 40); // let the hidden state paint first so the transition runs
+}
+function checkReveal() {
+  const limit = innerHeight * 0.94;
+  for (const e of pendingReveal) {
+    if (!e.isConnected) { pendingReveal.delete(e); continue; }
+    const r = e.getBoundingClientRect();
+    // shown (not in a hidden tab) and reached, including anything already scrolled past
+    if (r.height > 0 && r.top < limit) { e.classList.add("in"); pendingReveal.delete(e); }
+  }
+}
+function updateProgress() {
+  const max = document.documentElement.scrollHeight - innerHeight;
+  $("progress").style.setProperty("--p", max > 0 ? Math.min(1, scrollY / max) : 0);
+}
+let scrollTimer = null;
+function onScroll() {
+  if (scrollTimer) return;
+  scrollTimer = setTimeout(() => { scrollTimer = null; updateProgress(); checkReveal(); }, 30);
+}
+addEventListener("scroll", onScroll, { passive: true });
+addEventListener("resize", onScroll);
+
+// ---------- Job listings ----------
+// The daily collector (scripts/update_jobs.py) writes jobs/<country>/<degree>.json,
+// jobs/<country>/open-any.json, open-stem.json and jobs/meta.json next to this page.
+const PAGE_SIZE = 24;
+const jobFiles = new Map();
+function loadFile(path) {
+  if (!jobFiles.has(path)) {
+    const p = fetch(path, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    p.catch(() => jobFiles.delete(path)); // let a later search try again
+    jobFiles.set(path, p);
+  }
+  return jobFiles.get(path);
+}
+
+async function poolFor(st) {
+  if (st.mode === "relevant") return (await loadFile(`jobs/${st.country}/${slug(st.degree)}.json`)).jobs;
+  const files = ["open-any", ...(DEGREES[st.degree].family === "stem" ? ["open-stem"] : [])];
+  const lists = await Promise.all(files.map(f => loadFile(`jobs/${st.country}/${f}.json`).then(d => d.jobs, () => [])));
+  const seen = new Set();
+  return lists.flat().filter(j => !seen.has(j.id) && seen.add(j.id));
+}
+
+const INTERN = /\b(intern(ship)?|placement|summer|industrial|year in industry|praktikum|stage|stagiaire|prácticas|stagiair)\b/i;
+function filterJobs(jobs, st) {
+  const iso = isoToday();
+  const words = [SUBJECT_ALL, OPEN_ALL].includes(st.role) ? [] : st.role.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  const place = st.place.trim().toLowerCase();
+  return jobs.filter(j =>
+    (!j.deadline || j.deadline >= iso) &&
+    words.every(w => j.title.toLowerCase().includes(w)) &&
+    (!place || (j.location || "").toLowerCase().includes(place)) &&
+    (st.level === "any" || (st.level === "grad" ? j.grad : INTERN.test(j.title))));
+}
+
+function salaryText(j) {
+  const f = new Intl.NumberFormat(COUNTRIES[state.country].locale, { style: "currency", currency: j.currency || "GBP", maximumFractionDigits: 0 });
+  const lo = j.salaryMin, hi = j.salaryMax;
+  if (!lo && !hi) return "";
+  const text = lo && hi && lo !== hi ? `${f.format(lo)} – ${f.format(hi)}` : lo && hi ? f.format(lo) : lo ? `From ${f.format(lo)}` : `Up to ${f.format(hi)}`;
+  return j.salaryEstimated ? `${text} (estimated)` : text;
+}
+
+function ago(iso) {
+  const days = Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) { const h = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 3600000)); return `${h} hour${h === 1 ? "" : "s"} ago`; }
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
+// Monogram logo: the APIs don't provide company logos, so each employer gets initials on a colour fixed by its name
+function logoFor(company) {
+  const words = company.replace(/\b(the|ltd|limited|plc|llp|group|uk)\b/gi, "").trim().split(/\s+/).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+  let h = 0; for (const ch of company) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  const logo = el("div", "logo", initials);
+  logo.style.setProperty("--hue", h);
+  logo.setAttribute("aria-hidden", "true");
+  return logo;
+}
+
+const ICONS = {
+  pin: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 15s5-4.6 5-8.5A5 5 0 0 0 3 6.5C3 10.4 8 15 8 15Zm0-6.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/></svg>',
+  pay: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12v8H2zM8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  clock: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm.7 6.2 2.6 1.6-.7 1.2-3.3-2V4h1.4Z"/></svg>'
+};
+function fact(icon, text, cls) {
+  const f = el("span", "fact" + (cls ? " " + cls : ""));
+  f.innerHTML = ICONS[icon];
+  f.appendChild(el("span", null, text));
+  return f;
+}
+
+function listingCard(j) {
+  const card = el("article", "listing");
+  card.appendChild(logoFor(j.company));
+  const main = el("div", "l-main");
+  const title = el("h3"); const link = el("a", null, j.title);
+  link.href = j.url; link.target = "_blank"; link.rel = "noopener";
+  title.appendChild(link);
+  main.append(title, el("p", "l-co", j.company));
+  const facts = el("div", "facts");
+  if (j.location) facts.appendChild(fact("pin", j.location));
+  const pay = salaryText(j);
+  facts.appendChild(fact("pay", pay || "Salary not stated", pay ? "" : "dim"));
+  main.appendChild(facts);
+  const meta = el("div", "pills");
+  meta.appendChild(deadlinePill(j.deadline));
+  if (j.posted) meta.appendChild(el("span", "pill", `Posted ${ago(j.posted)}`));
+  meta.appendChild(el("span", "pill src", `via ${j.sources.join(" & ")}`));
+  main.appendChild(meta);
+  card.appendChild(main);
+
+  const act = el("div", "l-act");
+  const apply = el("a", "btn primary small", "View & apply ↗");
+  apply.href = j.url; apply.target = "_blank"; apply.rel = "noopener";
+  const keep = el("button", "btn small keep"); keep.type = "button"; keep.dataset.listing = j.id;
+  keep.onclick = () => shortlistListing(j, keep);
+  act.append(apply, keep);
+  card.appendChild(act);
+  setKeepState(keep);
+  return card;
+}
+
+function setKeepState(btn) {
+  const kept = hub.jobs.some(h => h.listingId === btn.dataset.listing);
+  btn.textContent = kept ? "Shortlisted ✓" : "Shortlist";
+  btn.disabled = kept;
+  btn.classList.toggle("kept", kept);
+}
+
+async function shortlistListing(j, btn) {
+  btn.disabled = true;
+  const pay = salaryText(j);
+  try {
+    await addJob({
+      kind: "job", title: j.title, company: j.company, location: j.location || "", url: j.url,
+      deadline: j.deadline || "", fit: state.mode, status: "shortlist", appliedOn: "",
+      notes: pay ? `Salary: ${pay}` : "", degree: state.degree, createdAt: Date.now(), listingId: j.id
+    });
+    toast("list-toast", "Added to your shortlist in My hub.");
+  } catch (err) {
+    btn.disabled = false;
+    if (err && err.code === "storage") toast("list-toast", "This browser is blocking storage, so the job could not be saved.");
+    else writeFailed(err);
+  }
+  for (const b of document.querySelectorAll("[data-listing]")) setKeepState(b);
+}
+
+// ---------- Find view ----------
+const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", grade: "21" };
+const results = { jobs: [], shown: 0, run: 0 };
+
+function rolesFor() {
+  const d = DEGREES[state.degree];
+  return state.mode === "relevant" ? [SUBJECT_ALL, ...d.roles] : [OPEN_ALL, ...OPEN_ROLES[d.family]];
+}
+
+function fillSelects() {
+  $("degree").innerHTML = "";
+  for (const d of Object.keys(DEGREES)) $("degree").appendChild(el("option", null, d));
+  $("country").innerHTML = "";
+  for (const [k, v] of Object.entries(COUNTRIES)) { const o = el("option", null, v.name); o.value = k; $("country").appendChild(o); }
+}
+
+function renderRoles() {
+  const box = $("roles");
+  box.innerHTML = "";
+  for (const role of rolesFor()) {
+    const b = el("button", "chip" + (role === SUBJECT_ALL ? " key" : ""), role);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(role === state.role));
+    b.onclick = () => { state.role = role; render(); };
+    box.appendChild(b);
+  }
+}
+
+function renderHeading() {
+  const role = state.role.trim();
+  const h = $("headline"); h.textContent = "";
+  const where = state.place.trim() ? `in ${state.place.trim()}` : `in ${COUNTRIES[state.country].name}`;
+  const label = role === SUBJECT_ALL ? `${state.degree} jobs` : role === OPEN_ALL ? "Jobs open to your degree" : role;
+  h.append(el("em", state.mode === "open" ? "open" : "", label), ` ${role === SUBJECT_ALL || role === OPEN_ALL ? "" : state.mode === "open" ? "roles open to your degree " : "jobs "}${where}`);
+  const tip = $("tip"); tip.textContent = ""; tip.className = "tip" + (state.mode === "open" ? " open" : "");
+  const modeText = state.mode === "relevant"
+    ? `In my subject: only jobs whose title matches ${state.degree}, so you won't see finance or consulting schemes that are just open to all graduates.`
+    : `Open to my degree: jobs whose adverts say any degree${DEGREES[state.degree].family === "stem" ? " or any STEM degree" : ""} is welcome.`;
+  tip.append(el("strong", null, modeText), el("span", null, GRADE_TIPS[state.grade]));
+}
+
+// Loads the pool for the current search, filters it and shows the first page
+async function renderResults(animate = false) {
+  if ($("results").hidden) return;
+  const run = ++results.run;
+  renderHeading();
+  const list = $("groups");
+  $("count").textContent = "Loading jobs…";
+  $("more").hidden = true;
+  let pool;
+  try { pool = await poolFor(state); }
+  catch {
+    if (run !== results.run) return;
+    list.innerHTML = "";
+    const msg = window.claude
+      ? "Live job listings load on the Catalyst website. This Claude version can still save jobs to your hub."
+      : "No job listings have been collected yet for this country. They appear after the daily update has run.";
+    list.appendChild(el("p", "nojobs", msg));
+    $("count").textContent = "";
+    return;
+  }
+  if (run !== results.run) return; // a newer search started while this one loaded
+  results.jobs = filterJobs(pool, state);
+  results.shown = 0;
+  list.innerHTML = "";
+  if (!results.jobs.length) {
+    list.appendChild(el("p", "nojobs", "No current jobs match this search. Try clearing the town, choosing Any level, or picking a different role."));
+  }
+  showMore(animate);
+  renderCount();
+  if (animate) reveal([$("headline"), $("tip")]);
+}
+
+function showMore(animate = true) {
+  const next = results.jobs.slice(results.shown, results.shown + PAGE_SIZE);
+  const cards = next.map(listingCard);
+  $("groups").append(...cards);
+  results.shown += next.length;
+  const left = results.jobs.length - results.shown;
+  $("more").hidden = left <= 0;
+  $("more").textContent = `Show ${Math.min(left, PAGE_SIZE)} more`;
+  if (animate) reveal(cards);
+}
+
+async function renderCount() {
+  const n = results.jobs.length;
+  let text = `${n.toLocaleString("en-GB")} job${n === 1 ? "" : "s"}`;
+  try {
+    const meta = await loadFile("jobs/meta.json");
+    const c = meta.countries[state.country];
+    if (c) text += ` · updated ${ago(c.updated)}`;
+  } catch {}
+  $("count").textContent = text;
+}
+
+function runSearch() {
+  if (!state.role.trim()) { toast("toast", "Choose or type a role first."); $("role").focus(); return; }
+  const box = $("results");
+  box.hidden = false;
+  renderResults(true);
+  box.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+}
+
+function render() {
+  $("degree").value = state.degree;
+  $("role").value = [SUBJECT_ALL, OPEN_ALL].includes(state.role) ? "" : state.role;
+  $("role").placeholder = state.role === SUBJECT_ALL ? `All ${state.degree} job titles` : "e.g. Analytical Chemist";
+  $("country").value = state.country;
+  $("place").value = state.place;
+  $("level").value = state.level;
+  $("grade").value = state.grade;
+  for (const m of ["relevant", "open"]) $("mode-" + m).setAttribute("aria-pressed", String(state.mode === m));
+  renderRoles();
+  renderResults();
+}
+
+$("degree").onchange = e => { state.degree = e.target.value; state.role = rolesFor()[0]; render(); };
+for (const m of ["relevant", "open"]) $("mode-" + m).onclick = () => { if (state.mode === m) return; state.mode = m; state.role = rolesFor()[0]; render(); };
+$("role").oninput = e => { state.role = e.target.value || rolesFor()[0]; renderRoles(); renderResults(); };
+$("more").onclick = () => showMore();
+$("country").onchange = e => { state.country = e.target.value; render(); };
+$("place").oninput = e => { state.place = e.target.value; renderResults(); };
+$("level").onchange = e => { state.level = e.target.value; renderResults(); };
+$("grade").onchange = e => { state.grade = e.target.value; renderResults(); };
+$("brief").onsubmit = e => { e.preventDefault(); runSearch(); };
+
+// Saved searches: a per-browser convenience only
+const KEY = "degree-job-finder:saved";
+function loadSaved() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } }
+function storeSaved(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); return true; } catch { return false; } }
+function renderSaved() {
+  const list = loadSaved(), ul = $("saved-list");
+  ul.innerHTML = "";
+  $("saved-empty").hidden = list.length > 0;
+  list.forEach((s, i) => {
+    const li = el("li");
+    const country = COUNTRIES[s.country] ? s.country : "gb"; // searches saved before the country list changed
+    const where = s.place || COUNTRIES[country].name;
+    const load = el("button", "load", `${[SUBJECT_ALL, OPEN_ALL].includes(s.role) ? s.degree : s.role} · ${where}${s.mode === "open" ? " · open" : ""}`);
+    load.type = "button";
+    load.onclick = () => { Object.assign(state, { mode: "relevant" }, s, { country }); render(); runSearch(); };
+    const del = el("button", "linkbtn", "Remove"); del.type = "button";
+    del.setAttribute("aria-label", `Remove ${load.textContent}`);
+    del.onclick = () => { const l = loadSaved(); l.splice(i, 1); storeSaved(l); renderSaved(); };
+    li.append(load, del); ul.appendChild(li);
+  });
+}
+let toastTimers = {};
+function toast(id, msg) { $(id).textContent = msg; clearTimeout(toastTimers[id]); toastTimers[id] = setTimeout(() => $(id).textContent = "", 3000); }
+$("save").onclick = () => {
+  if (!state.role.trim()) { toast("toast", "Choose a role first, then save."); return; }
+  const same = s => ["degree", "mode", "role", "country", "place", "level"].every(k => s[k] === state[k]);
+  const list = loadSaved().filter(s => !same(s));
+  list.unshift({ ...state });
+  toast("toast", storeSaved(list.slice(0, 12)) ? "Search saved." : "This browser is blocking storage, so the search could not be saved.");
+  renderSaved();
+};
+
+// ---------- Hub storage ----------
+// Signed in on claude.ai: each person's jobs live in their own private db subtree.
+// Anywhere else: this browser's storage.
+const LOCAL_JOBS = "degree-job-finder:jobs";
+const hub = { jobs: [], mode: "loading", col: null, unsub: null, filter: "all" };
+
+function localLoad() { try { return JSON.parse(localStorage.getItem(LOCAL_JOBS)) || []; } catch { return []; } }
+function localStore() { try { localStorage.setItem(LOCAL_JOBS, JSON.stringify(hub.jobs)); return true; } catch { return false; } }
+
+function useLocal(note) {
+  hub.mode = "local";
+  hub.jobs = localLoad();
+  showNote(note);
+  renderHub();
+}
+function showNote(text) { $("store-note").hidden = !text; $("store-note").textContent = text || ""; }
+
+async function initStore() {
+  const use = window.claude && window.claude.use;
+  if (!use) { useLocal("Your hub is saved in this browser only."); return; }
+  showNote("Loading your hub…");
+  let uid = null, db = null;
+  try {
+    const user = await window.claude.use("user");
+    uid = user ? await user.id() : null;
+    db = uid ? await window.claude.use("db") : null;
+  } catch {}
+  if (!db || !uid) { useLocal("Sign in to Claude to keep your hub on every device. For now it is saved in this browser only."); return; }
+  hub.mode = "db";
+  hub.col = db.collection("data/users/" + uid);
+  const timer = setTimeout(() => showNote("Your saved jobs can't be reached yet. Check your connection; they will appear when it returns."), 10000);
+  hub.unsub = hub.col.onSnapshot(snap => {
+    hub.jobs = snap.docs.filter(d => d.data().kind === "job").map(d => ({ id: d.id, ...d.data() }));
+    if (!snap.metadata.fromCache) { clearTimeout(timer); showNote(""); }
+    renderHub();
+  }, err => {
+    clearTimeout(timer);
+    showNote(err.code === "revoked" ? "Your hub is no longer available on this page." : "Your hub couldn't be loaded. Reload the page to try again.");
+  });
+}
+
+function writeFailed(e) {
+  if (e && e.code === "quota_exceeded") showNote("Your hub is full. Remove some old jobs to add new ones.");
+  else showNote("That change didn't save. Check your connection and try again.");
+}
+
+// Visitors whose access level can't save to their account (e.g. a Viewer) keep their hub in this browser instead.
+async function viaDb(dbWrite, localWrite) {
+  if (hub.mode === "db") {
+    try { await dbWrite(); return; }
+    catch (e) {
+      if (!e || e.code !== "invalid_argument") throw e;
+      if (hub.unsub) hub.unsub();
+      useLocal("Your hub can't be saved to your account on this page, so it is saved in this browser only.");
+    }
+  }
+  localWrite();
+}
+
+async function addJob(job) {
+  const id = "job-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await viaDb(() => hub.col.doc(id).set(job), () => {
+    hub.jobs.push({ id, ...job });
+    if (!localStore()) throw { code: "storage" };
+    renderHub();
+  });
+}
+async function patchJob(id, patch) {
+  await viaDb(() => hub.col.doc(id).update(patch), () => {
+    const j = hub.jobs.find(j => j.id === id);
+    if (j) { Object.assign(j, patch); localStore(); renderHub(); }
+  });
+}
+async function removeJob(id) {
+  await viaDb(() => hub.col.doc(id).delete(), () => {
+    hub.jobs = hub.jobs.filter(j => j.id !== id); localStore(); renderHub();
+  });
+}
+
+// ---------- Hub view ----------
+const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const isoToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+function fmtDate(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+function deadlinePill(iso) {
+  if (!iso) return el("span", "pill", "No closing date");
+  const days = Math.round((new Date(iso + "T00:00:00") - today()) / 86400000);
+  if (days < 0) return el("span", "pill late", `Closed ${fmtDate(iso)}`);
+  if (days === 0) return el("span", "pill late", "Closes today");
+  if (days <= 7) return el("span", "pill soon", `${days} day${days === 1 ? "" : "s"} left`);
+  return el("span", "pill", `Closes ${fmtDate(iso)}`);
+}
+function fitPill(fit) { return el("span", "pill " + fit, fit === "open" ? "Open to my degree" : "In my subject"); }
+
+function armDelete(btn, id) {
+  btn.onclick = () => {
+    if (!btn.classList.contains("armed")) {
+      btn.classList.add("armed"); btn.textContent = "Confirm remove";
+      setTimeout(() => { btn.classList.remove("armed"); btn.textContent = "Remove"; }, 4000);
+      return;
+    }
+    removeJob(id).catch(writeFailed);
+  };
+}
+
+function jobCard(j) {
+  const li = el("li", "job");
+  const top = el("div", "job-top");
+  const head = el("div");
+  head.appendChild(el("h4", null, j.title));
+  const meta = [j.company, j.location].filter(Boolean).join(" · ");
+  if (meta) head.appendChild(el("p", "meta", meta));
+  top.appendChild(head);
+  li.appendChild(top);
+
+  const pills = el("div", "pills");
+  pills.appendChild(fitPill(j.fit));
+  if (j.status === "shortlist") pills.appendChild(deadlinePill(j.deadline));
+  else {
+    pills.appendChild(el("span", "pill st-" + j.status, STATUSES[j.status]));
+    if (j.appliedOn) pills.appendChild(el("span", "pill", `Applied ${fmtDate(j.appliedOn)}`));
+  }
+  li.appendChild(pills);
+  if (j.notes) li.appendChild(el("p", "notes", j.notes));
+
+  const actions = el("div", "job-actions");
+  if (j.status === "shortlist") {
+    const b = el("button", "btn small primary", "Mark as applied"); b.type = "button";
+    b.onclick = () => patchJob(j.id, { status: "applied", appliedOn: isoToday() }).catch(writeFailed);
+    actions.appendChild(b);
+  } else {
+    const sel = el("select"); sel.id = "stage-" + j.id; sel.setAttribute("aria-label", `Stage for ${j.title}`);
+    for (const [k, v] of Object.entries(STATUSES)) { const o = el("option", null, v); o.value = k; sel.appendChild(o); }
+    sel.value = j.status;
+    sel.onchange = () => patchJob(j.id, { status: sel.value }).catch(writeFailed);
+    actions.appendChild(sel);
+  }
+  const del = el("button", "btn small danger", "Remove"); del.type = "button";
+  armDelete(del, j.id);
+  actions.appendChild(del);
+  if (j.url && /^https?:\/\//i.test(j.url)) {
+    const a = el("a", null, "View advert ↗"); a.href = j.url; a.target = "_blank"; a.rel = "noopener";
+    actions.appendChild(a);
+  }
+  li.appendChild(actions);
+  return li;
+}
+
+const seenCards = new Set(); // cards animate in only the first time they appear
+function renderHub() {
+  const all = hub.jobs;
+  $("hub-count").textContent = all.length;
+  const stats = [
+    ["Shortlisted", all.filter(j => j.status === "shortlist").length],
+    ["Applied", all.filter(j => j.status !== "shortlist").length],
+    ["Interviews", all.filter(j => j.status === "interview").length],
+    ["Offers", all.filter(j => j.status === "offer").length]
+  ];
+  $("stats").innerHTML = "";
+  for (const [label, n] of stats) { const s = el("div", "stat"); s.append(el("span", "label", label), el("b", null, String(n))); $("stats").appendChild(s); }
+
+  for (const b of $("hub-filter").querySelectorAll(".chip")) b.setAttribute("aria-pressed", String(b.dataset.filter === hub.filter));
+  const shown = all.filter(j => hub.filter === "all" || j.fit === hub.filter);
+  const short = shown.filter(j => j.status === "shortlist").sort((a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999"));
+  const order = { interview: 0, offer: 1, applied: 2, rejected: 3 };
+  const apps = shown.filter(j => j.status !== "shortlist").sort((a, b) => order[a.status] - order[b.status] || (b.appliedOn || "").localeCompare(a.appliedOn || ""));
+
+  const fill = (ul, list, n, emptyText) => {
+    ul.innerHTML = ""; $(n).textContent = list.length ? `${list.length}` : "";
+    if (!list.length) { ul.appendChild(el("li", "empty", emptyText)); return; }
+    const fresh = [];
+    for (const j of list) {
+      const card = jobCard(j);
+      if (!seenCards.has(j.id)) { seenCards.add(j.id); fresh.push(card); }
+      ul.appendChild(card);
+    }
+    reveal(fresh);
+  };
+  const loading = hub.mode === "loading";
+  fill($("short-list"), short, "short-n", loading ? "Loading…" : "Nothing shortlisted yet. Press \"Shortlist\" on a job in Find jobs, or use \"Add a job\".");
+  fill($("app-list"), apps, "app-n", loading ? "Loading…" : "No applications yet. Press \"Mark as applied\" on a shortlisted job once you've sent it.");
+  for (const b of document.querySelectorAll("[data-listing]")) setKeepState(b);
+}
+
+for (const b of $("hub-filter").querySelectorAll(".chip")) b.onclick = () => { hub.filter = b.dataset.filter; renderHub(); };
+
+$("add-form").onsubmit = async e => {
+  e.preventDefault();
+  const title = $("j-title").value.trim();
+  if (!title) { toast("add-toast", "Add a job title first."); return; }
+  let url = $("j-url").value.trim();
+  if (url && !/^https?:\/\//i.test(url)) url = "https://" + url;
+  const status = document.querySelector('input[name="j-status"]:checked').value;
+  const job = {
+    kind: "job", title, company: $("j-company").value.trim(), location: $("j-location").value.trim(),
+    url, deadline: $("j-deadline").value || "", fit: document.querySelector('input[name="j-fit"]:checked').value,
+    status, appliedOn: status === "applied" ? isoToday() : "", notes: $("j-notes").value.trim(),
+    degree: state.degree, createdAt: Date.now()
+  };
+  $("j-save").disabled = true;
+  try {
+    await addJob(job);
+    $("add-form").reset();
+    toast("add-toast", status === "applied" ? "Added to your applications." : "Added to your shortlist.");
+  } catch (err) {
+    if (err && err.code === "storage") toast("add-toast", "This browser is blocking storage, so the job could not be saved.");
+    else writeFailed(err);
+  } finally { $("j-save").disabled = false; }
+};
+
+// ---------- Views ----------
+function showView(v) {
+  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.view === v));
+  for (const name of ["find", "hub"]) {
+    const view = $("view-" + name);
+    const wasHidden = view.hidden;
+    view.hidden = v !== name;
+    if (!view.hidden && wasHidden) { view.classList.remove("enter"); void view.offsetWidth; view.classList.add("enter"); }
+  }
+  if (v === "hub") reveal([...$("stats").children]);
+  onScroll();
+}
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => showView(t.dataset.view);
+
+$("cta-add").onclick = () => {
+  showView("hub");
+  $("add-box").open = true;
+  if (state.role && state.role !== SUBJECT_ALL) $("j-title").value = state.role;
+  if (state.place) $("j-location").value = state.place;
+  $(state.mode === "open" ? "j-fit-open" : "j-fit-relevant").checked = true;
+  $("j-title").focus();
+};
+
+fillSelects();
+render();
+renderSaved();
+showView(location.hash === "#hub" ? "hub" : "find");
+renderHub();
+initStore();
+</script>
