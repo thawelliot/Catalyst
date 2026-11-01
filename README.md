@@ -2,33 +2,32 @@
 
 A job-finding website for graduates: pick your degree, then browse current job openings in your subject or open to any degree, and track the jobs you shortlist and apply for.
 
-Every morning a GitHub Action collects listings from the **Reed** and **Adzuna** job APIs, removes duplicates and expired jobs, saves them to `website/jobs/`, and publishes the site to **GitHub Pages**.
+Every morning a GitHub Action collects listings from the **Reed** and **Adzuna** job APIs, removes duplicates and expired jobs, saves them to the `jobs` folder, and publishes the site to **GitHub Pages**.
 
 ## What's in this folder
 
-| Path | What it is |
+Everything sits at the top level, so uploading to GitHub is a plain drag and drop.
+
+| File | What it is |
 | --- | --- |
 | `job-finder.html` | The app itself. Edit this one. |
-| `build-website.ps1` | Turns `job-finder.html` into `website/index.html`. Run it after editing. |
-| `website/` | The published site. `website/jobs/` is filled in by the daily update. |
-| `scripts/update_jobs.py` | Collects, de-duplicates and saves the job listings. |
-| `scripts/degrees.json` | Job-title phrases that count as "in my subject" for each degree. |
+| `build-website.ps1` | Turns `job-finder.html` into `index.html`, the site's home page. Run it after editing. |
+| `index.html` | The published home page. |
+| `update_jobs.py` | Collects, de-duplicates and saves the job listings into `jobs/`. |
+| `degrees.json` | Job-title phrases that count as "in my subject" for each degree. |
+| `test_update_jobs.py` | Tests for the collector. |
 | `.github/workflows/update-jobs.yml` | Runs the collector daily and publishes the site. |
+| `jobs/` | Created by the daily update. Don't edit it by hand. |
 
 ## Setting it up (once)
 
-1. **Get free API keys**
-   - Reed: sign up at <https://www.reed.co.uk/developers/jobseeker>. The key is shown on your account page.
-   - Adzuna: register at <https://developer.adzuna.com>. You get an **Application ID** and an **Application Key**.
-2. **Create a GitHub repository.** Sign up at <https://github.com>, then make a new **public** repository called `catalyst`.
-3. **Upload this folder.** On the repository page choose **Add file → Upload files**, drag in everything in this folder (including the `.github` folder) and press **Commit changes**.
-4. **Add the keys as secrets.** Go to **Settings → Secrets and variables → Actions → New repository secret** and add three secrets:
-   `REED_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`.
-   Secrets stay private: they are never put in the website.
-5. **Turn on Pages.** Go to **Settings → Pages** and set **Source** to **GitHub Actions**.
-6. **Run the first update.** Go to **Actions → Update jobs and publish site → Run workflow**, tick **Refresh every country**, and run it. It takes about 15 minutes.
+1. **Get free API keys** from Reed (<https://www.reed.co.uk/developers/jobseeker>) and Adzuna (<https://developer.adzuna.com>).
+2. **Create a public GitHub repository** and upload the files above. Create the workflow with **Add file → Create new file**, named `.github/workflows/update-jobs.yml`.
+3. **Add three secrets** under **Settings → Secrets and variables → Actions**: `REED_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. They are never put in the website.
+4. **Settings → Pages → Source: GitHub Actions.**
+5. **Actions → Update jobs and publish site → Run workflow**, ticking **Refresh every country**. It takes about 20 minutes.
 
-Your site is then live at `https://<your-username>.github.io/catalyst/`.
+The site is then live at `https://<your-username>.github.io/<repository-name>/`.
 
 ## How the listings stay current
 
@@ -38,6 +37,6 @@ Your site is then live at `https://<your-username>.github.io/catalyst/`.
 
 ## Changing the site
 
-Edit `job-finder.html`, run `build-website.ps1`, and upload the changed files to GitHub. The site republishes on its own.
+Edit `job-finder.html`, run `build-website.ps1`, and upload `index.html` (and any other changed files) to GitHub. The site republishes on its own.
 
-To test the collector: `py -m unittest discover -s scripts`
+To test the collector: `py -m unittest test_update_jobs`

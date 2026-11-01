@@ -1,6 +1,6 @@
 """Collects job listings for every degree from the Reed and Adzuna APIs.
 
-Writes one file per country and degree to website/jobs/, plus pools of
+Writes one file per country and degree to jobs/, plus pools of
 "open to any degree" jobs and a meta.json the site reads for freshness.
 Every run rebuilds the files it refreshes, so filled or expired jobs drop out.
 
@@ -26,9 +26,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "website" / "jobs"
-DEGREES = {k: v for k, v in json.loads((Path(__file__).parent / "degrees.json").read_text(encoding="utf-8")).items() if not k.startswith("_")}
+ROOT = Path(__file__).resolve().parent
+OUT = ROOT / "jobs"
+DEGREES = {k: v for k, v in json.loads((ROOT / "degrees.json").read_text(encoding="utf-8")).items() if not k.startswith("_")}
 
 # Adzuna country code -> currency. Reed only covers the UK.
 COUNTRIES = {"gb": "GBP", "de": "EUR", "nl": "EUR", "fr": "EUR", "es": "EUR"}

@@ -1,8 +1,7 @@
-# Builds website/index.html from job-finder.html so the app can be hosted on any static web host.
+# Builds index.html (the website's home page) from job-finder.html.
 # Run again after changing job-finder.html.
 $src = Join-Path $PSScriptRoot 'job-finder.html'
-$outDir = Join-Path $PSScriptRoot 'website'
-New-Item -ItemType Directory -Force $outDir | Out-Null
+$out = Join-Path $PSScriptRoot 'index.html'
 
 $page = [System.IO.File]::ReadAllText($src, [System.Text.Encoding]::UTF8)
 $head = @'
@@ -11,10 +10,10 @@ $head = @'
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Search UK and European job boards by degree, and track the jobs you shortlist and apply for.">
+<meta name="description" content="Catalyst: current graduate jobs by degree, pooled from UK and European job sites, with a shortlist and application tracker.">
 </head>
 <body>
 '@
 $html = $head + $page + "`n</body>`n</html>`n"
-[System.IO.File]::WriteAllText((Join-Path $outDir 'index.html'), $html, (New-Object System.Text.UTF8Encoding $false))
-"Built $(Join-Path $outDir 'index.html')"
+[System.IO.File]::WriteAllText($out, $html, (New-Object System.Text.UTF8Encoding $false))
+"Built $out"

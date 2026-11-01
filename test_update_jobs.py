@@ -1,4 +1,4 @@
-"""Tests for the job collector. Run: py -m unittest discover scripts"""
+"""Tests for the job collector. Run: py -m unittest test_update_jobs"""
 import datetime as dt
 import re
 import unittest
@@ -80,7 +80,7 @@ class Merging(unittest.TestCase):
 
 class Config(unittest.TestCase):
     def test_degrees_match_the_site(self):
-        page = (Path(__file__).resolve().parent.parent / "job-finder.html").read_text(encoding="utf-8")
+        page = (Path(__file__).resolve().parent / "job-finder.html").read_text(encoding="utf-8")
         block = page.split("const DEGREES = {", 1)[1].split("\n};", 1)[0]
         site = re.findall(r'^\s*"([^"]+)":', block, re.M)
         self.assertEqual(sorted(site), sorted(uj.DEGREES))
