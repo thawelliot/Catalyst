@@ -110,6 +110,43 @@ class SummariesAndNewness(unittest.TestCase):
         self.assertEqual([j["firstSeen"] for j in new], ["2026-10-20T05:00:00+00:00", "2026-11-02T05:00:00+00:00"])
 
 
+NHS_VACANCY = """<vacancyDetails><id>5695022</id><reference>C9348-26-2398</reference>
+<title>Band 5 Rotational Physiotherapist</title><description>Join our friendly MSK and inpatient rotation. Preceptorship and CPD support provided for newly qualified physiotherapists.</description>
+<employer>Example NHS Trust</employer><type>Permanent</type><salary>£32073.00 to £39043.00</salary>
+<closeDate>2026-11-20</closeDate><postDate>2026-10-28T09:12:00.1234</postDate>
+<url>https://beta.jobs.nhs.uk/candidate/jobadvert/C9348-26-2398</url>
+<locations><location>Portsmouth, PO2 0TA</location><location>Fareham, PO16 0LF</location><location>Portsmouth, PO6 3LY</location></locations></vacancyDetails>"""
+
+
+class NHS(unittest.TestCase):
+    def test_vacancy_record(self):
+        j = uj.from_nhs(uj.ET.fromstring(NHS_VACANCY), "5")
+        self.assertEqual(j["id"], "nhs-5695022")
+        self.assertEqual(j["band"], "5")
+        self.assertTrue(j["grad"])
+        self.assertEqual(j["location"], "Portsmouth, Fareham")
+        self.assertEqual((j["salaryMin"], j["salaryMax"]), (32073, 39043))
+        self.assertEqual((j["deadline"], j["posted"]), ("2026-11-20", "2026-10-28"))
+        self.assertEqual(j["sources"], ["NHS Jobs"])
+
+    def test_band_codes_and_seniority(self):
+        self.assertEqual(uj.from_nhs(uj.ET.fromstring(NHS_VACANCY), "8A")["band"], "8a")
+        self.assertFalse(uj.from_nhs(uj.ET.fromstring(NHS_VACANCY), "7")["grad"])
+
+    def test_salary_formats(self):
+        self.assertEqual(uj.nhs_salary("£31.11"), (31, 31))
+        self.assertEqual(uj.nhs_salary("Negotiable"), (None, None))
+        self.assertEqual(uj.nhs_salary("£24,169 - £25,524 per annum"), (24169, 25524))
+
+    def test_band_survives_merge_with_reed_copy(self):
+        nhs = uj.from_nhs(uj.ET.fromstring(NHS_VACANCY), "5")
+        reed_copy = uj.from_reed(reed(9, "Band 5 Rotational Physiotherapist", "Example NHS Trust", "Portsmouth"))
+        self.assertEqual(uj.merge([reed_copy, nhs], TODAY)[0]["band"], "5")
+
+    def test_every_nhs_degree_is_a_degree(self):
+        self.assertTrue(set(uj.NHS_KEYWORDS) <= set(uj.DEGREES))
+
+
 class Postcodes(unittest.TestCase):
     def test_spots_postcodes_only(self):
         self.assertEqual(uj.postcode_of("PE129YD"), "PE12 9YD")

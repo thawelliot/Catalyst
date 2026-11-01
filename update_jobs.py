@@ -1,7 +1,8 @@
-"""Collects job listings for every degree from the Reed and Adzuna APIs.
+"""Collects job listings for every degree from the Reed, Adzuna and NHS Jobs feeds.
 
-Writes one file per country and degree to jobs/, plus pools of
-"open to any degree" jobs and a meta.json the site reads for freshness.
+Writes one file per country and degree to jobs/, pools of "open to any degree"
+jobs, NHS jobs by pay band (jobs/gb/nhs-<degree>.json) for health degrees, and
+a meta.json the site reads for freshness.
 Every run rebuilds the files it refreshes, so filled or expired jobs drop out.
 
 Environment:
@@ -24,11 +25,20 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "jobs"
-DEGREES = {k: v for k, v in json.loads((ROOT / "degrees.json").read_text(encoding="utf-8")).items() if not k.startswith("_")}
+_config = json.loads((ROOT / "degrees.json").read_text(encoding="utf-8"))
+DEGREES = {k: v for k, v in _config.items() if not k.startswith("_")}
+NHS_KEYWORDS = _config["_nhs"]  # degree -> NHS Jobs search word
+
+# NHS Agenda for Change pay bands, as the NHS Jobs feed names them
+NHS_BANDS = ["2", "3", "4", "5", "6", "7", "8A", "8B", "8C", "8D", "9"]
+NHS_PAGES = {"5": 30}  # pages of 10 per band; Band 5 (newly qualified) gets the most
+NHS_PAGES_DEFAULT = 15
+NHS_PAUSE = 0.3
 
 # Adzuna country code -> currency. Reed only covers the UK.
 COUNTRIES = {"gb": "GBP", "de": "EUR", "nl": "EUR", "fr": "EUR", "es": "EUR"}
@@ -144,6 +154,45 @@ def from_adzuna(a, currency):
     }
 
 
+def nhs_salary(text):
+    """'£32073.00 to £39043.00' -> (32073, 39043); '£31.11' -> (31, 31); 'Negotiable' -> (None, None)."""
+    nums = [money(n.replace(",", "")) for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text or "")]
+    nums = [n for n in nums if n]
+    return (min(nums), max(nums)) if nums else (None, None)
+
+
+def nhs_towns(vacancy):
+    """'Portsmouth, PO2 0TA' entries -> 'Portsmouth, Fareham' (town names, no repeats)."""
+    towns = []
+    for loc in vacancy.iter("location"):
+        town = clean(loc.text).split(",")[0].strip()
+        if town and town not in towns and not POSTCODE.match(town):
+            towns.append(town)
+    return ", ".join(towns)
+
+
+def from_nhs(v, band):
+    lo, hi = nhs_salary(v.findtext("salary"))
+    band = band.lower()
+    return {
+        "id": f"nhs-{v.findtext('id')}",
+        "title": clean(v.findtext("title")),
+        "company": clean(v.findtext("employer")) or "NHS employer",
+        "location": nhs_towns(v),
+        "salaryMin": lo,
+        "salaryMax": hi,
+        "currency": "GBP",
+        "salaryEstimated": False,
+        "deadline": (v.findtext("closeDate") or "")[:10] or None,
+        "posted": (v.findtext("postDate") or "")[:10] or None,
+        "url": v.findtext("url"),
+        "sources": ["NHS Jobs"],
+        "grad": band in ("2", "3", "4", "5"),
+        "summary": summarise(v.findtext("description")),
+        "band": band,
+    }
+
+
 def merge(jobs, today=None):
     """Drop expired jobs and merge duplicates, keeping the fullest record."""
     today = (today or dt.date.today()).isoformat()
@@ -156,8 +205,8 @@ def merge(jobs, today=None):
         if not have:
             pool[key] = dict(job, sources=list(job["sources"]))
             continue
-        for field in ("deadline", "posted", "location"):
-            have[field] = have[field] or job[field]
+        for field in ("deadline", "posted", "location", "band"):
+            have[field] = have.get(field) or job.get(field)
         if have["salaryMin"] is None and have["salaryMax"] is None or (have["salaryEstimated"] and not job["salaryEstimated"] and (job["salaryMin"] or job["salaryMax"])):
             have.update(salaryMin=job["salaryMin"], salaryMax=job["salaryMax"], salaryEstimated=job["salaryEstimated"])
         have["grad"] = have["grad"] or job["grad"]
@@ -173,7 +222,7 @@ def carry_first_seen(jobs, previous, now):
     # files from before firstSeen existed fall back to the posting date, so old jobs don't all look new
     seen = {dedupe_key(j): j.get("firstSeen") or (j.get("posted") and j["posted"] + "T00:00:00+00:00") for j in previous}
     for j in jobs:
-        j["firstSeen"] = seen.get(dedupe_key(j)) or now
+        j["firstSeen"] = seen.get(dedupe_key(j)) or j.get("firstSeen") or now
     return jobs
 
 
@@ -185,27 +234,47 @@ def previous_jobs(path):
 
 
 # ---------- Fetching ----------
-def get_json(url, headers=None, tries=3, body=None):
-    """GET, or POST when a JSON body is given; retries busy or failing servers."""
+def get_json(url, headers=None, tries=3, body=None, parse=json.load):
+    """GET, or POST when a JSON body is given; retries busy or failing servers.
+    Pass parse=parse_xml for XML feeds."""
     for attempt in range(tries):
         data = json.dumps(body).encode() if body is not None else None
         extra = {"Content-Type": "application/json"} if data else {}
         req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **extra, **(headers or {})})
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.load(resp)
+                return parse(resp)
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503) and attempt < tries - 1:
                 time.sleep(10 * (attempt + 1))
                 continue
             print(f"  ! {e.code} from {url.split('?')[0]}", file=sys.stderr)
             return None
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError, ET.ParseError) as e:
             if attempt < tries - 1:
                 time.sleep(5)
                 continue
             print(f"  ! {e} from {url.split('?')[0]}", file=sys.stderr)
             return None
+
+
+def parse_xml(resp):
+    return ET.parse(resp).getroot()
+
+
+def nhs_search(keyword, band):
+    """NHS Jobs XML feed: 10 vacancies a page, filtered to one pay band."""
+    jobs = []
+    for page in range(1, NHS_PAGES.get(band, NHS_PAGES_DEFAULT) + 1):
+        q = urllib.parse.urlencode({"keyword": keyword, "payBand": f"BAND_{band}", "page": page})
+        root = get_json(f"https://www.jobs.nhs.uk/api/v1/search_xml?{q}", parse=parse_xml)
+        time.sleep(NHS_PAUSE)
+        if root is None:
+            break
+        jobs += [from_nhs(v, band) for v in root.findall("vacancyDetails")]
+        if page >= int(root.findtext("totalPages") or 0):
+            break
+    return jobs
 
 
 def reed_search(key, keywords, **params):
@@ -275,6 +344,18 @@ def write(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
+def collect_nhs(degree, phrases, now):
+    """Every pay band's NHS jobs for one degree, written to jobs/gb/nhs-<degree>.json."""
+    keyword = NHS_KEYWORDS[degree]
+    found = [j for band in NHS_BANDS for j in nhs_search(keyword, band)]
+    jobs = merge([j for j in found if title_matches(j["title"], phrases + [keyword])])
+    path = OUT / "gb" / f"nhs-{slug(degree)}.json"
+    carry_first_seen(jobs, previous_jobs(path), now)
+    write(path, {"degree": degree, "country": "gb", "updated": now, "jobs": jobs})
+    print(f"  gb NHS {degree}: {len(jobs)}")
+    return [dict(j) for j in jobs]
+
+
 def collect_country(country, reed_key, adzuna):
     now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     total = 0
@@ -283,12 +364,15 @@ def collect_country(country, reed_key, adzuna):
         if country == "gb" and reed_key:
             for phrase in phrases:
                 found += reed_search(reed_key, phrase)
+        # one Adzuna call per degree keeps inside its free limits
         if adzuna and country == "gb":
-            for phrase in phrases[:2]:
-                found += adzuna_search(*adzuna, country, title_only=phrase)
+            found += adzuna_search(*adzuna, country, title_only=phrases[0])
         elif adzuna:
-            # one broad call per degree elsewhere keeps inside the free limits
             found += adzuna_search(*adzuna, country, what_or=" ".join(sorted({w for p in phrases for w in p.split()})))
+        if country == "gb" and degree in NHS_KEYWORDS:
+            nhs = collect_nhs(degree, phrases, now)
+            found += nhs
+            total += len(nhs)
         path = OUT / country / f"{slug(degree)}.json"
         jobs = merge(place_postcodes([j for j in found if title_matches(j["title"], phrases)]))
         carry_first_seen(jobs, previous_jobs(path), now)

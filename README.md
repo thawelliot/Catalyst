@@ -2,7 +2,9 @@
 
 A job-finding website for graduates: pick your degree, then browse current job openings in your subject or open to any degree, and track the jobs you shortlist and apply for.
 
-Every morning a GitHub Action collects listings from the **Reed** and **Adzuna** job APIs, removes duplicates and expired jobs, saves them to the `jobs` folder, and publishes the site to **GitHub Pages**.
+Every morning a GitHub Action collects listings from the **Reed** and **Adzuna** job APIs and the **NHS Jobs** feed, removes duplicates and expired jobs, saves them to the `jobs` folder, and publishes the site to **GitHub Pages**.
+
+Health degrees (Physiotherapy, Nursing, Midwifery and others) get an extra **NHS** option, with jobs filtered by Agenda for Change pay band. Band 5 is the usual starting band for newly qualified staff. The NHS search words live under `_nhs` in `degrees.json`.
 
 ## What's in this folder
 
