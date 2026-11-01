@@ -6,9 +6,6 @@
     "Occupational Therapy": "occupational therapist",
     "Midwifery": "midwife",
     "Paramedic Science": "paramedic",
-    "Diagnostic Radiography": "radiographer",
-    "Dietetics": "dietitian",
-    "Speech & Language Therapy": "speech and language therapist",
     "Pharmacy": "pharmacist",
     "Biology / Biomedical Science": "biomedical scientist",
     "Psychology": "psychologist"
@@ -24,9 +21,6 @@
   "Occupational Therapy": ["occupational therapist", "occupational therapy"],
   "Midwifery": ["midwife", "midwifery", "maternity"],
   "Paramedic Science": ["paramedic", "emergency care", "ambulance"],
-  "Diagnostic Radiography": ["radiographer", "radiography", "sonographer", "imaging"],
-  "Dietetics": ["dietitian", "dietetic", "nutritionist"],
-  "Speech & Language Therapy": ["speech and language", "speech & language"],
   "Biology / Biomedical Science": ["biomedical scientist", "biologist", "microbiologist", "laboratory technician", "lab technician", "biology", "clinical research", "laboratory scientist", "life science", "genetics", "molecular"],
   "Chemistry": ["chemist", "chemistry", "chemical", "analytical scientist", "formulation scientist", "laboratory analyst", "lab analyst", "qc analyst", "quality control analyst", "polymer", "materials scientist", "laboratory technician", "lab technician"],
   "Physics": ["physicist", "physics", "optical", "photonics", "laser", "metrology", "acoustic", "radiation", "nuclear"],
@@ -35,8 +29,5 @@
   "Civil Engineering": ["civil engineer", "structural engineer", "site engineer", "highways engineer", "geotechnical", "drainage engineer", "quantity surveyor", "infrastructure engineer", "bridge engineer"],
   "History / Politics": ["policy officer", "policy advisor", "parliamentary", "archivist", "public affairs", "research assistant", "researcher", "campaigns", "heritage"],
   "Geography / Environmental Science": ["environmental", "gis", "sustainability", "ecologist", "ecology", "planning assistant", "planner", "climate", "conservation"],
-  "Sport Science": ["sports scientist", "strength and conditioning", "exercise physiologist", "sport", "fitness", "pe teacher", "physical activity", "sports coach", "football coach"],
-  "Education": ["teacher", "teaching assistant", "learning support", "tutor", "sen", "education officer", "lecturer"],
-  "Pharmacy": ["pharmacist", "pharmacy", "regulatory affairs", "pharmaceutical", "medical information", "dispenser"],
-  "Languages": ["translator", "localisation", "bilingual", "multilingual", "interpreter", "speaking", "language"]
+  "Pharmacy": ["pharmacist", "pharmacy", "regulatory affairs", "pharmaceutical", "medical information", "dispenser"]
 }

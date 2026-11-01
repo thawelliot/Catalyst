@@ -134,6 +134,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .pill.band { background: var(--grad-from); color: var(--on-grad); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#roles { min-height: 68px; align-content: flex-start; } /* room for two rows, so switching modes doesn't nudge the page */
 .chip { font: inherit; font-size: 14px; border: 1px solid transparent; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
 .chip:hover { border-color: var(--accent); }
 .chip[aria-pressed="true"] { background: var(--grad); color: var(--on-grad); }
@@ -469,9 +470,6 @@ const DEGREES = {
   "Occupational Therapy": { family: "health", nhs: true, roles: ["Occupational Therapist", "Rotational Occupational Therapist", "Mental Health Occupational Therapist", "Community Occupational Therapist"] },
   "Midwifery": { family: "health", nhs: true, roles: ["Midwife", "Newly Qualified Midwife", "Community Midwife", "Maternity Support Worker"] },
   "Paramedic Science": { family: "health", nhs: true, roles: ["Paramedic", "Newly Qualified Paramedic", "Emergency Care Assistant", "Urgent Care Practitioner"] },
-  "Diagnostic Radiography": { family: "health", nhs: true, roles: ["Radiographer", "Diagnostic Radiographer", "CT Radiographer", "MRI Radiographer", "Sonographer"] },
-  "Dietetics": { family: "health", nhs: true, roles: ["Dietitian", "Community Dietitian", "Paediatric Dietitian", "Nutritionist"] },
-  "Speech & Language Therapy": { family: "health", nhs: true, roles: ["Speech and Language Therapist", "Paediatric Speech and Language Therapist", "Speech and Language Therapy Assistant"] },
   "Biology / Biomedical Science": { family: "stem", nhs: true, roles: ["Biomedical Scientist", "Laboratory Technician", "Microbiologist", "Clinical Research Associate", "Research Assistant"] },
   "Chemistry": { family: "stem", roles: ["Analytical Chemist", "Formulation Chemist", "Process Chemist", "Quality Control Chemist", "Laboratory Technician"] },
   "Physics": { family: "stem", roles: ["Physicist", "Research Scientist", "Medical Physicist", "Physics Teacher", "Optical Engineer"] },
@@ -480,10 +478,7 @@ const DEGREES = {
   "Civil Engineering": { family: "stem", roles: ["Civil Engineer", "Site Engineer", "Structural Engineer", "Highways Engineer", "Geotechnical Engineer"] },
   "History / Politics": { family: "humanities", roles: ["Policy Officer", "Researcher", "Parliamentary Assistant", "Archivist", "Public Affairs Assistant"] },
   "Geography / Environmental Science": { family: "stem", roles: ["Environmental Consultant", "GIS Analyst", "Sustainability Analyst", "Ecologist", "Planning Assistant"] },
-  "Sport Science": { family: "health", roles: ["Sports Scientist", "Strength and Conditioning Coach", "Exercise Physiologist", "PE Teacher"] },
-  "Education": { family: "humanities", roles: ["Teaching Assistant", "Primary Teacher", "Secondary Teacher", "Learning Support Assistant", "Education Officer"] },
   "Pharmacy": { family: "health", nhs: true, roles: ["Foundation Pharmacist", "Pharmacist", "Regulatory Affairs Associate", "Medical Information Associate"] },
-  "Languages": { family: "humanities", roles: ["Translator", "Localisation Specialist", "Multilingual Customer Success", "International Sales Executive"] }
 };
 
 // Roles that recruit from any degree in a family: the "Open to my degree" list
@@ -592,7 +587,8 @@ function filterJobs(jobs, st) {
 
 // Bands 8a–8d and 9 share one choice in the band menu
 const bandGroup = b => (b && /^(8|9)/.test(b) ? "8+" : b);
-const nhsOffered = () => DEGREES[state.degree].nhs && state.country === "gb";
+// Strict true/false: classList.toggle treats undefined as "flip", which made the mode buttons jump
+const nhsOffered = () => Boolean(DEGREES[state.degree].nhs) && state.country === "gb";
 
 // Hourly, daily and monthly rates scaled to a year so they compare with salaries
 function annualPay(j) {
@@ -767,7 +763,7 @@ function rolesFor() {
 
 function fillSelects() {
   $("degree").innerHTML = "";
-  for (const d of Object.keys(DEGREES)) $("degree").appendChild(el("option", null, d));
+  for (const d of Object.keys(DEGREES).sort((a, b) => a.localeCompare(b, "en-GB"))) $("degree").appendChild(el("option", null, d));
   $("country").innerHTML = "";
   for (const [k, v] of Object.entries(COUNTRIES)) { const o = el("option", null, v.name); o.value = k; $("country").appendChild(o); }
 }
