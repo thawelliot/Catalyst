@@ -88,6 +88,28 @@ class Merging(unittest.TestCase):
         self.assertEqual([j["company"] for j in uj.merge([a, b, c], TODAY)], ["B", "A", "C"])
 
 
+class SummariesAndNewness(unittest.TestCase):
+    def test_summary_is_trimmed_at_a_word(self):
+        text = "<p>We are hiring a graduate chemist to join our busy QC lab.</p> " + "Great benefits and training. " * 20
+        s = uj.summarise(text)
+        self.assertTrue(s.startswith("We are hiring a graduate chemist"))
+        self.assertTrue(s.endswith("…"))
+        self.assertLessEqual(len(s), uj.SUMMARY_LENGTH + 1)
+        self.assertEqual(uj.summarise("Short advert."), "Short advert.")
+
+    def test_longer_summary_kept_when_merging(self):
+        a = dict(uj.from_reed(reed(1, "Chemist", "Croda", "Goole")), summary="Short.")
+        b = dict(uj.from_adzuna(adzuna("a", "Chemist", "Croda", "Goole"), "GBP"), summary="A much longer description of the role.")
+        self.assertEqual(uj.merge([a, b], TODAY)[0]["summary"], "A much longer description of the role.")
+
+    def test_first_seen_survives_between_runs(self):
+        old = [dict(uj.from_reed(reed(1, "Chemist", "Croda", "Goole")), firstSeen="2026-10-20T05:00:00+00:00")]
+        new = [uj.from_adzuna(adzuna("a", "Chemist", "Croda", "Goole"), "GBP"),
+               uj.from_reed(reed(2, "Chemist", "Ineos", "Runcorn"))]
+        uj.carry_first_seen(new, old, "2026-11-02T05:00:00+00:00")
+        self.assertEqual([j["firstSeen"] for j in new], ["2026-10-20T05:00:00+00:00", "2026-11-02T05:00:00+00:00"])
+
+
 class Postcodes(unittest.TestCase):
     def test_spots_postcodes_only(self):
         self.assertEqual(uj.postcode_of("PE129YD"), "PE12 9YD")

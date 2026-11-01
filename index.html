@@ -179,9 +179,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 @media (max-width: 640px) {
   .listing { grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 14px; }
   .logo { width: 44px; height: 44px; font-size: 16px; border-radius: 10px; }
-  .l-act { grid-column: 1 / -1; flex-direction: row; }
-  .l-act .btn { flex: 1; }
+  .l-act { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .l-act .btn { flex: 1 1 auto; }
 }
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 18px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.tool { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tool label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.tool select { width: auto; min-width: 170px; padding: 7px 10px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; padding-bottom: 7px; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+@media (max-width: 520px) { .tool { flex: 1 1 140px; } .tool select { min-width: 0; width: 100%; } }
+.pill.new { background: var(--grad); color: var(--on-grad); font-weight: 500; }
+.preview { color: var(--accent); }
+.preview[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.l-more { grid-column: 2 / -1; border-top: 1px dashed var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; animation: rise .35s cubic-bezier(.2, .7, .2, 1); }
+.l-more p { margin: 0; max-width: 72ch; line-height: 1.55; overflow-wrap: anywhere; }
+.l-more a { color: var(--accent); font-weight: 600; font-size: 15px; }
+@media (max-width: 640px) { .l-more { grid-column: 1 / -1; } }
 .more { align-self: center; padding: 12px 22px; }
 #list-toast:empty { display: none; }
 .nojobs { margin: 0; padding: 22px; background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); }
@@ -343,6 +357,22 @@ header { animation: rise .7s cubic-bezier(.2, .7, .2, 1); }
         <span class="label" id="count" aria-live="polite"></span>
       </div>
       <div class="tip" id="tip"></div>
+      <div class="toolbar">
+        <div class="tool">
+          <label for="sort">Sort by</label>
+          <select id="sort">
+            <option value="closing">Closing soonest</option>
+            <option value="newest">Newest first</option>
+            <option value="pay">Highest salary</option>
+          </select>
+        </div>
+        <div class="tool">
+          <label for="minpay">Minimum salary</label>
+          <select id="minpay"></select>
+        </div>
+        <label class="toggle"><input type="checkbox" id="hasdeadline"> Has a closing date</label>
+        <label class="toggle"><input type="checkbox" id="newonly"> New since my last visit</label>
+      </div>
       <p class="toast" id="list-toast" aria-live="polite"></p>
       <div id="groups" class="listings"></div>
       <button type="button" class="btn more" id="more" hidden></button>
@@ -546,7 +576,50 @@ function filterJobs(jobs, st) {
     (!j.deadline || j.deadline >= iso) &&
     words.every(w => j.title.toLowerCase().includes(w)) &&
     (!place || (j.location || "").toLowerCase().includes(place)) &&
-    (st.level === "any" || (st.level === "grad" ? j.grad : INTERN.test(j.title))));
+    (st.level === "any" || (st.level === "grad" ? j.grad : INTERN.test(j.title))) &&
+    (!st.minPay || annualPay(j) >= st.minPay) &&
+    (!st.hasDeadline || j.deadline) &&
+    (!st.newOnly || isNew(j)));
+}
+
+// Hourly, daily and monthly rates scaled to a year so they compare with salaries
+function annualPay(j) {
+  const top = j.salaryMax || j.salaryMin || 0;
+  return top < 100 ? top * 1950 : top < 1000 ? top * 230 : top < 10000 ? top * 12 : top;
+}
+
+const SORTS = {
+  closing: (a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999") || listedAt(b).localeCompare(listedAt(a)),
+  newest: (a, b) => listedAt(b).localeCompare(listedAt(a)),
+  pay: (a, b) => annualPay(b) - annualPay(a) || SORTS.closing(a, b)
+};
+
+// ---------- New since last visit ----------
+// The previous visit's time is read once per browsing session, so badges stay put while you look around.
+const NEW_WINDOW_DAYS = 3; // first-time visitors see the last few days' jobs as new
+const since = (() => {
+  const fallback = new Date(Date.now() - NEW_WINDOW_DAYS * 86400000).toISOString();
+  try {
+    let s = sessionStorage.getItem("catalyst:since");
+    if (!s) {
+      s = localStorage.getItem("catalyst:lastVisit") || fallback;
+      sessionStorage.setItem("catalyst:since", s);
+    }
+    localStorage.setItem("catalyst:lastVisit", new Date().toISOString());
+    return s;
+  } catch { return fallback; }
+})();
+const listedAt = j => j.firstSeen || (j.posted ? j.posted + "T00:00:00Z" : "");
+const isNew = j => new Date(listedAt(j)) > new Date(since);
+
+const PAY_STEPS = [20000, 25000, 30000, 35000, 40000, 50000];
+function fillPayOptions() {
+  const f = new Intl.NumberFormat(COUNTRIES[state.country].locale, { style: "currency", currency: state.country === "gb" ? "GBP" : "EUR", maximumFractionDigits: 0 });
+  const sel = $("minpay");
+  sel.innerHTML = "";
+  const any = el("option", null, "Any salary"); any.value = "0"; sel.appendChild(any);
+  for (const v of PAY_STEPS) { const o = el("option", null, `${f.format(v)}+ a year`); o.value = String(v); sel.appendChild(o); }
+  sel.value = String(state.minPay);
 }
 
 function salaryText(j) {
@@ -603,6 +676,7 @@ function listingCard(j) {
   facts.appendChild(fact("pay", pay || "Salary not stated", pay ? "" : "dim"));
   main.appendChild(facts);
   const meta = el("div", "pills");
+  if (isNew(j)) meta.appendChild(el("span", "pill new", "New"));
   meta.appendChild(deadlinePill(j.deadline));
   if (j.posted) meta.appendChild(el("span", "pill", `Posted ${ago(j.posted)}`));
   meta.appendChild(el("span", "pill src", `via ${j.sources.join(" & ")}`));
@@ -617,7 +691,30 @@ function listingCard(j) {
   act.append(apply, keep);
   card.appendChild(act);
   setKeepState(keep);
+  if (j.summary) addPreview(card, act, j);
   return card;
+}
+
+// A "Preview" button that opens the advert's first lines inside the card
+function addPreview(card, act, j) {
+  const btn = el("button", "btn small preview", "Preview");
+  btn.type = "button";
+  btn.setAttribute("aria-expanded", "false");
+  const panel = el("div", "l-more");
+  panel.id = "more-" + j.id;
+  panel.hidden = true;
+  btn.setAttribute("aria-controls", panel.id);
+  const link = el("a", null, "Read the full advert ↗");
+  link.href = j.url; link.target = "_blank"; link.rel = "noopener";
+  panel.append(el("p", null, j.summary), link);
+  btn.onclick = () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "Hide preview" : "Preview";
+  };
+  act.appendChild(btn);
+  card.appendChild(panel);
 }
 
 function setKeepState(btn) {
@@ -646,7 +743,7 @@ async function shortlistListing(j, btn) {
 }
 
 // ---------- Find view ----------
-const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", grade: "21" };
+const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", grade: "21", sort: "closing", minPay: 0, hasDeadline: false, newOnly: false };
 const results = { jobs: [], allLevels: 0, shown: 0, run: 0 };
 
 function rolesFor() {
@@ -707,7 +804,7 @@ async function renderResults(animate = false) {
     return;
   }
   if (run !== results.run) return; // a newer search started while this one loaded
-  results.jobs = filterJobs(pool, state);
+  results.jobs = filterJobs(pool, state).sort(SORTS[state.sort]);
   results.allLevels = state.level === "any" ? results.jobs.length : filterJobs(pool, { ...state, level: "any" }).length;
   results.shown = 0;
   list.innerHTML = "";
@@ -733,6 +830,8 @@ function showMore(animate = true) {
 async function renderCount() {
   const n = results.jobs.length;
   let text = `${n.toLocaleString("en-GB")} job${n === 1 ? "" : "s"}`;
+  const fresh = results.jobs.filter(isNew).length;
+  if (fresh && !state.newOnly) text += ` · ${fresh.toLocaleString("en-GB")} new`;
   if (results.allLevels > n) text += ` · ${results.allLevels.toLocaleString("en-GB")} at any level`;
   try {
     const meta = await loadFile("jobs/meta.json");
@@ -758,6 +857,10 @@ function render() {
   $("place").value = state.place;
   $("level").value = state.level;
   $("grade").value = state.grade;
+  $("sort").value = state.sort;
+  fillPayOptions();
+  $("hasdeadline").checked = state.hasDeadline;
+  $("newonly").checked = state.newOnly;
   for (const m of ["relevant", "open"]) $("mode-" + m).setAttribute("aria-pressed", String(state.mode === m));
   renderRoles();
   renderResults();
@@ -767,6 +870,10 @@ $("degree").onchange = e => { state.degree = e.target.value; state.role = rolesF
 for (const m of ["relevant", "open"]) $("mode-" + m).onclick = () => { if (state.mode === m) return; state.mode = m; state.role = rolesFor()[0]; render(); };
 $("role").oninput = e => { state.role = e.target.value || rolesFor()[0]; renderRoles(); renderResults(); };
 $("more").onclick = () => showMore();
+$("sort").onchange = e => { state.sort = e.target.value; renderResults(true); };
+$("minpay").onchange = e => { state.minPay = Number(e.target.value); renderResults(true); };
+$("hasdeadline").onchange = e => { state.hasDeadline = e.target.checked; renderResults(true); };
+$("newonly").onchange = e => { state.newOnly = e.target.checked; renderResults(true); };
 $("country").onchange = e => { state.country = e.target.value; render(); };
 $("place").oninput = e => { state.place = e.target.value; renderResults(); };
 $("level").onchange = e => { state.level = e.target.value; renderResults(); };

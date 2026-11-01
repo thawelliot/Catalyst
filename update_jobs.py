@@ -86,6 +86,17 @@ def money(value):
         return None
 
 
+SUMMARY_LENGTH = 280
+
+
+def summarise(text):
+    """First couple of sentences of an advert, cut at a word boundary."""
+    text = clean(text)
+    if len(text) <= SUMMARY_LENGTH:
+        return text
+    return text[:SUMMARY_LENGTH].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+
+
 GRAD_TITLE = re.compile(r"\b(graduate|grad|junior|jnr|entry[- ]level|trainee|apprentice|placement|intern(ship)?|assistant)\b", re.I)
 
 
@@ -109,6 +120,7 @@ def from_reed(r):
         "url": r.get("jobUrl") or f"https://www.reed.co.uk/jobs/{r['jobId']}",
         "sources": ["Reed"],
         "grad": entry_level(r.get("jobTitle")),
+        "summary": summarise(r.get("jobDescription")),
     }
 
 
@@ -128,6 +140,7 @@ def from_adzuna(a, currency):
         "url": a.get("redirect_url"),
         "sources": ["Adzuna"],
         "grad": entry_level(a.get("title")),
+        "summary": summarise(a.get("description")),
     }
 
 
@@ -148,9 +161,27 @@ def merge(jobs, today=None):
         if have["salaryMin"] is None and have["salaryMax"] is None or (have["salaryEstimated"] and not job["salaryEstimated"] and (job["salaryMin"] or job["salaryMax"])):
             have.update(salaryMin=job["salaryMin"], salaryMax=job["salaryMax"], salaryEstimated=job["salaryEstimated"])
         have["grad"] = have["grad"] or job["grad"]
+        if len(job.get("summary") or "") > len(have.get("summary") or ""):
+            have["summary"] = job["summary"]
         have["sources"] = sorted(set(have["sources"]) | set(job["sources"]))
     # soonest deadline first, then newest; undated jobs last within each
     return sorted(pool.values(), key=lambda j: (j["deadline"] or "9999-99-99", -int(j["posted"].replace("-", "")) if j["posted"] else 0))
+
+
+def carry_first_seen(jobs, previous, now):
+    """Stamp each job with when Catalyst first listed it, keeping the date from the last run's file."""
+    # files from before firstSeen existed fall back to the posting date, so old jobs don't all look new
+    seen = {dedupe_key(j): j.get("firstSeen") or (j.get("posted") and j["posted"] + "T00:00:00+00:00") for j in previous}
+    for j in jobs:
+        j["firstSeen"] = seen.get(dedupe_key(j)) or now
+    return jobs
+
+
+def previous_jobs(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("jobs", [])
+    except (OSError, ValueError):
+        return []
 
 
 # ---------- Fetching ----------
@@ -258,8 +289,10 @@ def collect_country(country, reed_key, adzuna):
         elif adzuna:
             # one broad call per degree elsewhere keeps inside the free limits
             found += adzuna_search(*adzuna, country, what_or=" ".join(sorted({w for p in phrases for w in p.split()})))
+        path = OUT / country / f"{slug(degree)}.json"
         jobs = merge(place_postcodes([j for j in found if title_matches(j["title"], phrases)]))
-        write(OUT / country / f"{slug(degree)}.json", {"degree": degree, "country": country, "updated": now, "jobs": jobs})
+        carry_first_seen(jobs, previous_jobs(path), now)
+        write(path, {"degree": degree, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
         print(f"  {country} {degree}: {len(jobs)}")
     for pool, phrases in OPEN_PHRASES.items():
@@ -269,8 +302,10 @@ def collect_country(country, reed_key, adzuna):
                 found += reed_search(reed_key, f'"{phrase}"', graduate="true")
             if adzuna:
                 found += adzuna_search(*adzuna, country, what_phrase=phrase)
+        path = OUT / country / f"open-{pool}.json"
         jobs = merge(place_postcodes(found))
-        write(OUT / country / f"open-{pool}.json", {"pool": pool, "country": country, "updated": now, "jobs": jobs})
+        carry_first_seen(jobs, previous_jobs(path), now)
+        write(path, {"pool": pool, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
         print(f"  {country} open-{pool}: {len(jobs)}")
     return now, total
