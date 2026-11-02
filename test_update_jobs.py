@@ -147,6 +147,48 @@ class NHS(unittest.TestCase):
         self.assertTrue(set(uj.NHS_KEYWORDS) <= set(uj.DEGREES))
 
 
+class Employers(unittest.TestCase):
+    def test_reed_itself_is_not_the_employer(self):
+        for name in ["Reed", "REED SPECIALIST RECRUITMENT", "Reed Specialist Recruitment Ltd", "Reed.co.uk"]:
+            self.assertEqual(uj.employer(name), (uj.UNNAMED, "Reed"), name)
+
+    def test_real_companies_keep_their_name(self):
+        self.assertEqual(uj.employer("Owen Reed"), ("Owen Reed", None))
+        self.assertEqual(uj.employer("Breedon Group plc"), ("Breedon Group plc", None))
+        self.assertEqual(uj.employer("Rise Technical Recruitment Limited"), ("Rise Technical Recruitment Limited", "Rise Technical Recruitment Limited"))
+        self.assertEqual(uj.employer(""), (uj.UNNAMED, None))
+
+    def test_unnamed_employers_never_merge(self):
+        a = uj.from_reed(reed(1, "Chemist", "Reed", "Leeds"))
+        b = uj.from_reed(reed(2, "Chemist", "Reed", "Leeds"))
+        self.assertEqual(len(uj.merge([a, b], TODAY)), 2)
+
+
+class Counties(unittest.TestCase):
+    def test_city_beats_village_of_same_name(self):
+        results = [
+            {"name_1": "Cambridge", "local_type": "Village", "county_unitary": "Gloucestershire", "region": "South West"},
+            {"name_1": "Cambridge", "local_type": "City", "county_unitary": "Cambridgeshire", "region": "Eastern"},
+            {"name_1": "Cambridge Heath", "local_type": "Suburban Area", "region": "London"},
+        ]
+        self.assertEqual(uj.county_of(uj.best_place(results, "Cambridge")), "Cambridgeshire")
+
+    def test_metropolitan_and_london(self):
+        self.assertEqual(uj.county_of({"district_borough": "Manchester", "county_unitary": None, "region": "North West"}), "Greater Manchester")
+        self.assertEqual(uj.county_of({"district_borough": "Westminster", "region": "London"}), "Greater London")
+        self.assertEqual(uj.county_of(None), "")
+
+    def test_add_areas_uses_first_town(self):
+        original = uj.lookup_county
+        uj.lookup_county = lambda town: {"Portsmouth": "Hampshire"}.get(town, "")
+        try:
+            jobs = uj.add_areas([{"location": "Portsmouth, Fareham"}, {"location": "UK"}])
+        finally:
+            uj.lookup_county = original
+        self.assertEqual(jobs[0]["area"], "Hampshire")
+        self.assertNotIn("area", jobs[1])
+
+
 class Postcodes(unittest.TestCase):
     def test_spots_postcodes_only(self):
         self.assertEqual(uj.postcode_of("PE129YD"), "PE12 9YD")

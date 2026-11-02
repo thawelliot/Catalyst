@@ -174,6 +174,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .l-main h3 a { color: var(--ink); text-decoration: none; }
 .l-main h3 a:hover { color: var(--accent); }
 .l-co { margin: 0; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
+.l-co.dim { font-weight: 400; font-style: italic; }
+.logo.unnamed { background: var(--chip); color: var(--muted); }
+.nearby { margin: 10px 0 0; padding-top: 14px; border-top: 1px dashed var(--line); }
 .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; }
 .fact { display: inline-flex; gap: 6px; align-items: center; }
 .fact svg { width: 15px; height: 15px; fill: var(--accent); color: var(--accent); flex: none; }
@@ -577,13 +580,37 @@ function filterJobs(jobs, st) {
   return jobs.filter(j =>
     (!j.deadline || j.deadline >= iso) &&
     words.every(w => j.title.toLowerCase().includes(w)) &&
-    (!place || (j.location || "").toLowerCase().includes(place)) &&
+    (!place || (j.location || "").toLowerCase().includes(place) || (st.county && j.area === st.county)) &&
     (nhs || st.level === "any" || (st.level === "grad" ? j.grad : INTERN.test(j.title))) &&
     (!nhs || st.band === "any" || bandGroup(j.band) === st.band) &&
     (!st.minPay || annualPay(j) >= st.minPay) &&
     (!st.hasDeadline || j.deadline) &&
     (!st.newOnly || isNew(j)));
 }
+
+// ---------- Nearby: widen a town search to its county ----------
+// jobs/places.json maps every town the collector has seen to its county. Towns it hasn't seen
+// are looked up once on postcodes.io (free, no key).
+const countyCache = new Map();
+async function countyFor(place) {
+  const key = place.trim().toLowerCase();
+  if (!key) return "";
+  if (countyCache.has(key)) return countyCache.get(key);
+  let county = "";
+  try {
+    const map = await loadFile("jobs/places.json");
+    county = map[key] || Object.values(map).find(c => c && c.toLowerCase() === key) || "";
+    if (!county && state.country === "gb") {
+      const r = await fetch(`https://api.postcodes.io/places?q=${encodeURIComponent(place.trim())}&limit=20`).then(r => r.json());
+      const rank = { City: 0, Town: 1, "Other Settlement": 2, "Suburban Area": 3, Village: 4, Hamlet: 5 };
+      const best = (r.result || []).filter(p => p.name_1.toLowerCase() === key).sort((a, b) => (rank[a.local_type] ?? 9) - (rank[b.local_type] ?? 9))[0];
+      if (best) county = (best.region === "London" ? "Greater London" : best.county_unitary || best.district_borough || "").split(" - ").pop();
+    }
+  } catch {}
+  countyCache.set(key, county);
+  return county;
+}
+const inTown = (j, place) => (j.location || "").toLowerCase().includes(place.trim().toLowerCase());
 
 // Bands 8a–8d and 9 share one choice in the band menu
 const bandGroup = b => (b && /^(8|9)/.test(b) ? "8+" : b);
@@ -649,6 +676,11 @@ function ago(iso) {
 
 // Monogram logo: the APIs don't provide company logos, so each employer gets initials on a colour fixed by its name
 function logoFor(company) {
+  if (company === "Employer not named") {
+    const logo = el("div", "logo unnamed", "?");
+    logo.setAttribute("aria-hidden", "true");
+    return logo;
+  }
   const words = company.replace(/\b(the|ltd|limited|plc|llp|group|uk)\b/gi, "").trim().split(/\s+/).filter(Boolean);
   const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
   let h = 0; for (const ch of company) h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -670,6 +702,8 @@ function fact(icon, text, cls) {
   return f;
 }
 
+const UNNAMED = "Employer not named";
+
 function listingCard(j) {
   const card = el("article", "listing");
   card.appendChild(logoFor(j.company));
@@ -677,15 +711,19 @@ function listingCard(j) {
   const title = el("h3"); const link = el("a", null, j.title);
   link.href = j.url; link.target = "_blank"; link.rel = "noopener";
   title.appendChild(link);
-  main.append(title, el("p", "l-co", j.company));
+  // a recruiter that hides its client: say so rather than showing the agency as the employer
+  const who = j.company === UNNAMED && j.agency ? `${UNNAMED} · advertised by ${j.agency}` : j.company;
+  main.append(title, el("p", "l-co" + (j.company === UNNAMED ? " dim" : ""), who));
   const facts = el("div", "facts");
-  if (j.location) facts.appendChild(fact("pin", j.location));
+  const place = j.area && j.location && !j.location.includes(j.area) ? `${j.location}, ${j.area}` : j.location || j.area;
+  if (place) facts.appendChild(fact("pin", place));
   const pay = salaryText(j);
   facts.appendChild(fact("pay", pay || "Salary not stated", pay ? "" : "dim"));
   main.appendChild(facts);
   const meta = el("div", "pills");
   if (isNew(j)) meta.appendChild(el("span", "pill new", "New"));
   if (j.band) meta.appendChild(el("span", "pill band", `Band ${j.band}`));
+  if (j.agency && j.company !== UNNAMED) meta.appendChild(el("span", "pill src", "Recruitment agency"));
   meta.appendChild(deadlinePill(j.deadline));
   if (j.posted) meta.appendChild(el("span", "pill", `Posted ${ago(j.posted)}`));
   meta.appendChild(el("span", "pill src", `via ${j.sources.join(" & ")}`));
@@ -753,7 +791,7 @@ async function shortlistListing(j, btn) {
 
 // ---------- Find view ----------
 const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", band: "5", sort: "closing", minPay: 0, hasDeadline: false, newOnly: false };
-const results = { jobs: [], wider: 0, shown: 0, run: 0 };
+const results = { jobs: [], wider: 0, inTown: 0, county: "", shown: 0, run: 0 };
 
 function rolesFor() {
   const d = DEGREES[state.degree];
@@ -814,9 +852,16 @@ async function renderResults(animate = false) {
     $("count").textContent = "";
     return;
   }
+  const county = state.country === "gb" ? await countyFor(state.place) : "";
   if (run !== results.run) return; // a newer search started while this one loaded
-  results.jobs = filterJobs(pool, state).sort(SORTS[state.sort]);
-  results.wider = filterJobs(pool, { ...state, level: "any", band: "any" }).length; // same search at every level or band
+  const st = { ...state, county };
+  const sorted = filterJobs(pool, st).sort(SORTS[state.sort]);
+  // jobs in the town itself first, then the rest of its county (no split when the county itself was typed)
+  const split = county && county.toLowerCase() !== state.place.trim().toLowerCase();
+  results.inTown = split ? sorted.filter(j => inTown(j, state.place)).length : sorted.length;
+  results.jobs = split ? [...sorted.filter(j => inTown(j, state.place)), ...sorted.filter(j => !inTown(j, state.place))] : sorted;
+  results.county = split ? county : "";
+  results.wider = filterJobs(pool, { ...st, level: "any", band: "any" }).length; // same search at every level or band
   results.shown = 0;
   list.innerHTML = "";
   if (!results.jobs.length) {
@@ -828,8 +873,15 @@ async function renderResults(animate = false) {
 }
 
 function showMore(animate = true) {
-  const next = results.jobs.slice(results.shown, results.shown + PAGE_SIZE);
+  const start = results.shown;
+  const next = results.jobs.slice(start, start + PAGE_SIZE);
   const cards = next.map(listingCard);
+  // a divider where jobs in the town give way to the rest of the county
+  const split = results.inTown - start;
+  if (results.county && split >= 0 && split < cards.length) {
+    const label = results.inTown ? `More in ${results.county}` : `Nothing in ${state.place.trim()} right now. Jobs elsewhere in ${results.county}:`;
+    cards.splice(split, 0, el("p", "nearby label", label));
+  }
   $("groups").append(...cards);
   results.shown += next.length;
   const left = results.jobs.length - results.shown;
@@ -841,6 +893,7 @@ function showMore(animate = true) {
 async function renderCount() {
   const n = results.jobs.length;
   let text = `${n.toLocaleString("en-GB")} job${n === 1 ? "" : "s"}`;
+  if (results.county && n > results.inTown) text = `${results.inTown.toLocaleString("en-GB")} in ${state.place.trim()} · ${(n - results.inTown).toLocaleString("en-GB")} more in ${results.county}`;
   const fresh = results.jobs.filter(isNew).length;
   if (fresh && !state.newOnly) text += ` · ${fresh.toLocaleString("en-GB")} new`;
   if (results.wider > n) text += ` · ${results.wider.toLocaleString("en-GB")} ${state.mode === "nhs" ? "in any band" : "at any level"}`;
@@ -900,7 +953,8 @@ $("minpay").onchange = e => { state.minPay = Number(e.target.value); renderResul
 $("hasdeadline").onchange = e => { state.hasDeadline = e.target.checked; renderResults(true); };
 $("newonly").onchange = e => { state.newOnly = e.target.checked; renderResults(true); };
 $("country").onchange = e => { state.country = e.target.value; render(); };
-$("place").oninput = e => { state.place = e.target.value; renderResults(); };
+let placeTimer;
+$("place").oninput = e => { state.place = e.target.value; clearTimeout(placeTimer); placeTimer = setTimeout(renderResults, 300); }; // wait for a pause in typing
 $("level").onchange = e => { state.level = e.target.value; renderResults(); };
 $("brief").onsubmit = e => { e.preventDefault(); runSearch(); };
 

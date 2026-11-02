@@ -69,7 +69,25 @@ def norm(text):
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
+UNNAMED = "Employer not named"
+# Reed's own agency posts many jobs as "Reed" without naming the client employer
+REED_ITSELF = re.compile(r"^(reed|reed specialist recruitment|reed\.co\.uk)( (ltd|limited))?$", re.I)
+AGENCY = re.compile(r"\b(recruitment|recruiting|recruiters?|staffing|personnel|resourcing|headhunt\w*|jobs in)\b", re.I)
+
+
+def employer(name):
+    """(company, agency): who is hiring, and the recruitment agency advertising it, if any."""
+    name = clean(name)
+    if not name:
+        return UNNAMED, None
+    if REED_ITSELF.match(name):
+        return UNNAMED, "Reed"
+    return name, (name if AGENCY.search(name) else None)
+
+
 def dedupe_key(job):
+    if job["company"] == UNNAMED:  # can't tell two unnamed employers apart, so never merge them
+        return f"unnamed:{job['id']}"
     company = re.sub(r"\s+", " ", COMPANY_SUFFIX.sub(" ", norm(job["company"]))).strip()
     city = norm(job["location"].split(",")[0])
     return f"{company}|{norm(job['title'])}|{city}"
@@ -116,10 +134,12 @@ def entry_level(title):
 
 
 def from_reed(r):
+    company, agency = employer(r.get("employerName"))
     return {
         "id": f"reed-{r['jobId']}",
         "title": clean(r.get("jobTitle")),
-        "company": clean(r.get("employerName")) or "Employer not named",
+        "company": company,
+        "agency": agency,
         "location": clean(r.get("locationName")),
         "salaryMin": money(r.get("minimumSalary")),
         "salaryMax": money(r.get("maximumSalary")),
@@ -136,10 +156,12 @@ def from_reed(r):
 
 def from_adzuna(a, currency):
     loc = a.get("location") or {}
+    company, agency = employer((a.get("company") or {}).get("display_name"))
     return {
         "id": f"adzuna-{a['id']}",
         "title": clean(a.get("title")),
-        "company": clean((a.get("company") or {}).get("display_name")) or "Employer not named",
+        "company": company,
+        "agency": agency,
         "location": clean(loc.get("display_name")),
         "salaryMin": money(a.get("salary_min")),
         "salaryMax": money(a.get("salary_max")),
@@ -178,6 +200,7 @@ def from_nhs(v, band):
         "id": f"nhs-{v.findtext('id')}",
         "title": clean(v.findtext("title")),
         "company": clean(v.findtext("employer")) or "NHS employer",
+        "agency": employer(v.findtext("employer"))[1],
         "location": nhs_towns(v),
         "salaryMin": lo,
         "salaryMax": hi,
@@ -317,7 +340,11 @@ def lookup_postcodes(codes):
         data = get_json("https://api.postcodes.io/postcodes", body={"postcodes": todo[i:i + 100]})
         for item in (data or {}).get("result") or []:
             r = item.get("result") or {}
-            _towns[item["query"].upper()] = r.get("admin_district") or r.get("parish") or r.get("region")
+            town = r.get("admin_district") or r.get("parish") or r.get("region")
+            _towns[item["query"].upper()] = town
+            if town:  # the postcode also tells us the county, more reliably than a name search
+                remember_county(town, "Greater London" if r.get("region") == "London"
+                                else MET_COUNTIES.get(town) or r.get("admin_county") or town)
     return {c: _towns.get(c) for c in codes}
 
 
@@ -331,6 +358,85 @@ def place_postcodes(jobs, lookup=lookup_postcodes):
         pc = postcode_of(j["location"])
         if pc:
             j["location"] = towns.get(pc) or pc
+    return jobs
+
+
+# ---------- Counties ----------
+# Each UK job gets an "area" (its county) so a search for Cambridge can also show jobs elsewhere in
+# Cambridgeshire. Town -> county answers are kept in jobs/places.json, so each town is only looked up once.
+PLACES_PATH = OUT / "places.json"
+PLACE_RANK = {"City": 0, "Town": 1, "Other Settlement": 2, "Suburban Area": 3, "Village": 4, "Hamlet": 5}
+# postcodes.io leaves the county blank for metropolitan districts and London
+MET_COUNTIES = {
+    **dict.fromkeys(["Bolton", "Bury", "Manchester", "Oldham", "Rochdale", "Salford", "Stockport", "Tameside", "Trafford", "Wigan"], "Greater Manchester"),
+    **dict.fromkeys(["Knowsley", "Liverpool", "Sefton", "St. Helens", "St Helens", "Wirral"], "Merseyside"),
+    **dict.fromkeys(["Barnsley", "Doncaster", "Rotherham", "Sheffield"], "South Yorkshire"),
+    **dict.fromkeys(["Gateshead", "Newcastle upon Tyne", "North Tyneside", "South Tyneside", "Sunderland"], "Tyne and Wear"),
+    **dict.fromkeys(["Birmingham", "Coventry", "Dudley", "Sandwell", "Solihull", "Walsall", "Wolverhampton"], "West Midlands"),
+    **dict.fromkeys(["Bradford", "Calderdale", "Kirklees", "Leeds", "Wakefield"], "West Yorkshire"),
+}
+_places = None
+
+
+def best_place(results, name):
+    """Exact name matches only, cities before towns before villages ('Cambridge' the city, not the hamlet)."""
+    exact = [p for p in results or [] if (p.get("name_1") or "").lower() == name.lower()]
+    return min(exact, key=lambda p: PLACE_RANK.get(p.get("local_type"), 9)) if exact else None
+
+
+def county_of(place):
+    if not place:
+        return ""
+    if place.get("region") == "London":
+        return "Greater London"
+    district = place.get("district_borough")
+    county = MET_COUNTIES.get(district) or place.get("county_unitary") or district or ""
+    return county.split(" - ")[-1]  # Welsh areas come as "Caerdydd - Cardiff"
+
+
+MET_BY_NAME = {k.lower(): v for k, v in MET_COUNTIES.items()}
+
+
+def places():
+    global _places
+    if _places is None:
+        _places = previous_places()
+    return _places
+
+
+def remember_county(town, county):
+    places().setdefault(town.lower(), county)
+
+
+def lookup_county(town):
+    """County for a town. Site names like 'Cambridge Bio Medical Campus' fall back to their first words."""
+    _places = places()
+    key = town.lower()
+    if key not in _places:
+        county = MET_BY_NAME.get(key, "")
+        words = town.split()
+        for name in dict.fromkeys([town, " ".join(words[:2]), words[0]]):  # full name, then first two words, then first
+            if county:
+                break
+            q = urllib.parse.urlencode({"q": name, "limit": 20})
+            data = get_json(f"https://api.postcodes.io/places?{q}") or {}
+            county = county_of(best_place(data.get("result"), name))
+        _places[key] = county
+    return _places[key]
+
+
+def previous_places():
+    try:
+        return json.loads(PLACES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def add_areas(jobs):
+    for j in jobs:
+        town = (j["location"] or "").split(",")[0].strip()
+        if town and town.lower() not in ("uk", "united kingdom", "england", "remote"):
+            j["area"] = lookup_county(town)
     return jobs
 
 
@@ -348,7 +454,7 @@ def collect_nhs(degree, phrases, now):
     """Every pay band's NHS jobs for one degree, written to jobs/gb/nhs-<degree>.json."""
     keyword = NHS_KEYWORDS[degree]
     found = [j for band in NHS_BANDS for j in nhs_search(keyword, band)]
-    jobs = merge([j for j in found if title_matches(j["title"], phrases + [keyword])])
+    jobs = add_areas(merge([j for j in found if title_matches(j["title"], phrases + [keyword])]))
     path = OUT / "gb" / f"nhs-{slug(degree)}.json"
     carry_first_seen(jobs, previous_jobs(path), now)
     write(path, {"degree": degree, "country": "gb", "updated": now, "jobs": jobs})
@@ -375,6 +481,8 @@ def collect_country(country, reed_key, adzuna):
             total += len(nhs)
         path = OUT / country / f"{slug(degree)}.json"
         jobs = merge(place_postcodes([j for j in found if title_matches(j["title"], phrases)]))
+        if country == "gb":
+            add_areas(jobs)
         carry_first_seen(jobs, previous_jobs(path), now)
         write(path, {"degree": degree, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
@@ -388,6 +496,8 @@ def collect_country(country, reed_key, adzuna):
                 found += adzuna_search(*adzuna, country, what_phrase=phrase)
         path = OUT / country / f"open-{pool}.json"
         jobs = merge(place_postcodes(found))
+        if country == "gb":
+            add_areas(jobs)
         carry_first_seen(jobs, previous_jobs(path), now)
         write(path, {"pool": pool, "country": country, "updated": now, "jobs": jobs})
         total += len(jobs)
@@ -414,6 +524,8 @@ def main():
         updated, total = collect_country(country, reed_key, adzuna)
         meta["countries"][country] = {"updated": updated, "jobs": total}
     write(meta_path, meta)
+    if _places is not None:
+        write(PLACES_PATH, dict(sorted(_places.items())))  # the site reads this to widen town searches to the county
     print("Done.")
 
 
