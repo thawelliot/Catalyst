@@ -82,19 +82,20 @@ header .label { color: var(--on-grad-muted); }
   grid-template-areas:
     "degree degree mode mode mode mode"
     "roles roles roles roles roles roles"
-    "role role country country place place"
+    "role role role keyword keyword keyword"
+    "country country country place place place"
     "level level level go go go";
   align-items: end;
 }
 .f-degree { grid-area: degree; } .f-mode { grid-area: mode; } .f-roles { grid-area: roles; }
-.f-role { grid-area: role; } .f-country { grid-area: country; } .f-place { grid-area: place; }
+.f-role { grid-area: role; } .f-keyword { grid-area: keyword; } .f-country { grid-area: country; } .f-place { grid-area: place; }
 .f-level, .f-band { grid-area: level; } .f-go { grid-area: go; }
 .f-degree, .f-mode { align-self: start; }
 @media (max-width: 820px) {
-  .search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "degree degree" "mode mode" "roles roles" "role role" "country place" "level level" "go go"; }
+  .search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "degree degree" "mode mode" "roles roles" "role role" "keyword keyword" "country place" "level level" "go go"; }
 }
 @media (max-width: 420px) {
-  .search-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "degree" "mode" "roles" "role" "country" "place" "level" "go"; }
+  .search-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "degree" "mode" "roles" "role" "keyword" "country" "place" "level" "go"; }
 }
 .go { width: 100%; padding: 14px 18px; font-size: 17px; display: flex; justify-content: center; gap: 10px; }
 .go span { transition: transform .25s; }
@@ -312,6 +313,10 @@ header { animation: rise .7s cubic-bezier(.2, .7, .2, 1); }
         <div class="field f-role">
           <label for="role">Role</label>
           <input id="role" placeholder="e.g. Analytical Chemist">
+        </div>
+        <div class="field f-keyword">
+          <label for="keyword">Include keywords</label>
+          <input id="keyword" placeholder="e.g. HPLC, hybrid, visa sponsorship">
         </div>
         <div class="field f-country">
           <label for="country">Country</label>
@@ -570,7 +575,9 @@ function filterJobs(jobs, st) {
   const words = ALL_ROLES.includes(st.role) ? [] : st.role.toLowerCase().split(/\s+/).filter(w => w.length > 1);
   const place = st.place.trim().toLowerCase();
   const nhs = st.mode === "nhs";
+  const terms = keywordTerms(st.keyword);
   return jobs.filter(j =>
+    (!terms.length || matchesKeywords(j, terms)) &&
     (!j.deadline || j.deadline >= iso) &&
     words.every(w => j.title.toLowerCase().includes(w)) &&
     (!place || (j.location || "").toLowerCase().includes(place) || (st.county && j.area === st.county)) &&
@@ -609,6 +616,16 @@ const inTown = (j, place) => (j.location || "").toLowerCase().includes(place.tri
 const bandGroup = b => (b && /^(8|9)/.test(b) ? "8+" : b);
 // Strict true/false: classList.toggle treats undefined as "flip", which made the mode buttons jump
 const nhsOffered = () => Boolean(DEGREES[state.degree].nhs) && state.country === "gb";
+
+// "HPLC, visa sponsorship" -> [["hplc"], ["visa", "sponsorship"]]: every comma-separated term must
+// match, and a term matches when all its words appear somewhere in the job's text
+function keywordTerms(text) {
+  return (text || "").toLowerCase().split(",").map(t => t.split(/\s+/).filter(Boolean)).filter(t => t.length);
+}
+function matchesKeywords(j, terms) {
+  const hay = [j.title, j.company, j.agency, j.location, j.area, j.summary].filter(Boolean).join(" ").toLowerCase();
+  return terms.every(words => words.every(w => hay.includes(w)));
+}
 
 // Hourly, daily and monthly rates scaled to a year so they compare with salaries
 function annualPay(j) {
@@ -783,7 +800,7 @@ async function shortlistListing(j, btn) {
 }
 
 // ---------- Find view ----------
-const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, country: "gb", place: "", level: "grad", band: "5", sort: "closing", minPay: 0, hasDeadline: false, newOnly: false };
+const state = { degree: "Chemistry", mode: "relevant", role: SUBJECT_ALL, keyword: "", country: "gb", place: "", level: "grad", band: "5", sort: "closing", minPay: 0, hasDeadline: false, newOnly: false };
 const results = { jobs: [], wider: 0, inTown: 0, county: "", shown: 0, run: 0 };
 
 function rolesFor() {
@@ -819,10 +836,12 @@ function renderHeading() {
     const band = state.band === "any" ? "" : `${bandName(state.band)} `;
     const what = role === NHS_ALL ? `${state.degree} jobs` : role;
     h.append(el("em", null, band + what), ` in the NHS${state.place.trim() ? ` in ${state.place.trim()}` : ""}`);
-    return;
+  } else {
+    const label = role === SUBJECT_ALL ? `${state.degree} jobs` : role === OPEN_ALL ? "Jobs open to your degree" : role;
+    h.append(el("em", state.mode === "open" ? "open" : "", label), ` ${role === SUBJECT_ALL || role === OPEN_ALL ? "" : state.mode === "open" ? "roles open to your degree " : "jobs "}${where}`);
   }
-  const label = role === SUBJECT_ALL ? `${state.degree} jobs` : role === OPEN_ALL ? "Jobs open to your degree" : role;
-  h.append(el("em", state.mode === "open" ? "open" : "", label), ` ${role === SUBJECT_ALL || role === OPEN_ALL ? "" : state.mode === "open" ? "roles open to your degree " : "jobs "}${where}`);
+  const kw = state.keyword.trim().replace(/\s*,\s*/g, ", ").replace(/,$/, "");
+  if (kw) h.append(` mentioning “${kw}”`);
 }
 
 // Loads the pool for the current search, filters it and shows the first page
@@ -858,7 +877,8 @@ async function renderResults(animate = false) {
   results.shown = 0;
   list.innerHTML = "";
   if (!results.jobs.length) {
-    list.appendChild(el("p", "nojobs", `No current jobs match this search. Try clearing the town, choosing ${state.mode === "nhs" ? "another band" : "Any level"}, or picking a different role.`));
+    const tips = [state.keyword.trim() && "removing a keyword", "clearing the town", state.mode === "nhs" ? "choosing another band" : "choosing Any level"].filter(Boolean);
+    list.appendChild(el("p", "nojobs", `No current jobs match this search. Try ${tips.join(", ")}, or picking a different role.`));
   }
   showMore(animate);
   renderCount();
@@ -919,6 +939,7 @@ function render() {
   $("degree").value = state.degree;
   $("role").value = ALL_ROLES.includes(state.role) ? "" : state.role;
   $("role").placeholder = ALL_ROLES.includes(state.role) ? `All ${state.degree} job titles` : "e.g. Analytical Chemist";
+  $("keyword").value = state.keyword || "";
   $("country").value = state.country;
   $("place").value = state.place;
   $("level").value = state.level;
@@ -946,8 +967,10 @@ $("minpay").onchange = e => { state.minPay = Number(e.target.value); renderResul
 $("hasdeadline").onchange = e => { state.hasDeadline = e.target.checked; renderResults(true); };
 $("newonly").onchange = e => { state.newOnly = e.target.checked; renderResults(true); };
 $("country").onchange = e => { state.country = e.target.value; render(); };
-let placeTimer;
-$("place").oninput = e => { state.place = e.target.value; clearTimeout(placeTimer); placeTimer = setTimeout(renderResults, 300); }; // wait for a pause in typing
+let typingTimer;
+const afterTyping = () => { clearTimeout(typingTimer); typingTimer = setTimeout(renderResults, 300); }; // wait for a pause in typing
+$("place").oninput = e => { state.place = e.target.value; afterTyping(); };
+$("keyword").oninput = e => { state.keyword = e.target.value; afterTyping(); };
 $("level").onchange = e => { state.level = e.target.value; renderResults(); };
 $("brief").onsubmit = e => { e.preventDefault(); runSearch(); };
 
@@ -965,9 +988,10 @@ function renderSaved() {
     const country = COUNTRIES[s.country] ? s.country : "gb"; // searches saved before the country list changed
     const where = s.place || COUNTRIES[country].name;
     const kind = s.mode === "open" ? " · open" : s.mode === "nhs" ? ` · NHS ${bandName(s.band || "any")}` : "";
-    const load = el("button", "load", `${ALL_ROLES.includes(s.role) ? s.degree : s.role} · ${where}${kind}`);
+    const kw = s.keyword ? ` · “${s.keyword}”` : "";
+    const load = el("button", "load", `${ALL_ROLES.includes(s.role) ? s.degree : s.role} · ${where}${kind}${kw}`);
     load.type = "button";
-    load.onclick = () => { Object.assign(state, { mode: "relevant" }, s, { country }); render(); runSearch(); };
+    load.onclick = () => { Object.assign(state, { mode: "relevant", keyword: "" }, s, { country }); render(); runSearch(); };
     const del = el("button", "linkbtn", "Remove"); del.type = "button";
     del.setAttribute("aria-label", `Remove ${load.textContent}`);
     del.onclick = () => { const l = loadSaved(); l.splice(i, 1); storeSaved(l); renderSaved(); };
@@ -978,7 +1002,7 @@ let toastTimers = {};
 function toast(id, msg) { $(id).textContent = msg; clearTimeout(toastTimers[id]); toastTimers[id] = setTimeout(() => $(id).textContent = "", 3000); }
 $("save").onclick = () => {
   if (!state.role.trim()) { toast("toast", "Choose a role first, then save."); return; }
-  const same = s => ["degree", "mode", "role", "country", "place", "level", "band"].every(k => s[k] === state[k]);
+  const same = s => ["degree", "mode", "role", "keyword", "country", "place", "level", "band"].every(k => (s[k] || "") === (state[k] || ""));
   const list = loadSaved().filter(s => !same(s));
   list.unshift({ ...state });
   toast("toast", storeSaved(list.slice(0, 12)) ? "Search saved." : "This browser is blocking storage, so the search could not be saved.");
